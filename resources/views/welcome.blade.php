@@ -4,7 +4,7 @@
         <meta charset="utf-8">
         <meta name="viewport" content="width=device-width, initial-scale=1">
 
-        <title>Laravel</title>
+        <title>Ledger</title>
 
         <!-- Fonts -->
         <link rel="preconnect" href="https://fonts.bunny.net">
@@ -27,7 +27,7 @@
                         </div>
                     </header>
 
-                    <main class="py-12 text-center text-xl text-black dark:text-white/70">
+                    <main class="py-12 text-center text-xl text-black dark:text-white/70" style="font-size: 36pt;">
                         Welcome to Ledger!
                     </main>
                     @if (Route::has('login'))
