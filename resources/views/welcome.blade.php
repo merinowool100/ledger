@@ -28,7 +28,7 @@
                     </header>
 
                     <main class="py-12 text-center text-xl text-black dark:text-white/70" style="font-size: 36pt;">
-                        Welcome to Cashflow!
+                        Cashflow!
                     </main>
                     @if (Route::has('login'))
                             <nav class="-mx-3 flex flex-1 justify-end">
