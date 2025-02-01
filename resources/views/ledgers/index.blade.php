@@ -24,7 +24,10 @@
               <tr class="border-b border-gray-200 dark:border-gray-700">
                 <td class="px-6 py-4 whitespace-nowrap text-sm font-medium text-gray-900 dark:text-gray-100">{{ $ledger->date }}</td>
                 <td class="px-6 py-4 whitespace-nowrap text-sm text-gray-500 dark:text-gray-300">{{ $ledger->item }}</td>
-                <td class="px-6 py-4 whitespace-nowrap text-sm text-gray-500 dark:text-gray-300">{{ $ledger->amount }}</td>
+                <td class="px-6 py-4 whitespace-nowrap text-sm text-gray-500 dark:text-gray-300 text-right 
+                @if($ledger->amount < 0) text-red-500 @endif">
+                  {{ number_format($ledger->amount) }} <!-- 桁区切り -->
+                </td>
                 <td class="px-6 py-4 whitespace-nowrap text-sm text-blue-500 hover:text-blue-700">
                   <a href="{{ route('ledgers.show', $ledger) }}">詳細を見る</a>
                 </td>
@@ -38,6 +41,3 @@
     </div>
   </div>
 </x-app-layout>
-
-
-
