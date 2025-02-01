@@ -41,10 +41,25 @@
                 @enderror
               </div>
 
-              <!-- 保存ボタン -->
-              <div class="flex justify-end">
-                <button type="submit" class="inline-flex items-center px-4 py-2 bg-indigo-600 text-white font-semibold text-sm rounded-md shadow-sm hover:bg-indigo-700 focus:outline-none focus:ring-2 focus:ring-indigo-500 focus:ring-offset-2 dark:bg-indigo-700 dark:hover:bg-indigo-600">
-                  保存
+              <!-- 以降の日付をまとめて更新または削除するかのチェックボックス -->
+              @if($ledger->group_id !== null) <!-- group_idがnullでない場合のみ表示 -->
+              <div>
+                <label for="apply_to_later_dates" class="inline-flex items-center">
+                  <input type="checkbox" name="apply_to_later_dates" id="apply_to_later_dates" {{ old('apply_to_later_dates', $ledger->group_id ? 'checked' : '') }}>
+                  以降の日付のデータにも同様に適用
+                </label>
+              </div>
+              @endif
+
+              <!-- 更新ボタン -->
+              <div class="flex justify-end space-x-4">
+                <button type="submit" name="action" value="update" class="inline-flex items-center px-4 py-2 bg-indigo-600 text-white font-semibold text-sm rounded-md shadow-sm hover:bg-indigo-700 focus:outline-none focus:ring-2 focus:ring-indigo-500 focus:ring-offset-2 dark:bg-indigo-700 dark:hover:bg-indigo-600">
+                  更新
+                </button>
+
+                <!-- 削除ボタン -->
+                <button type="submit" name="action" value="delete" class="inline-flex items-center px-4 py-2 bg-red-600 text-white font-semibold text-sm rounded-md shadow-sm hover:bg-red-700 focus:outline-none focus:ring-2 focus:ring-red-500 focus:ring-offset-2 dark:bg-red-700 dark:hover:bg-red-600">
+                  削除
                 </button>
               </div>
             </div>

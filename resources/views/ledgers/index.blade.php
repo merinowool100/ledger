@@ -1,10 +1,4 @@
 <x-app-layout>
-  <!-- <x-slot name="header">
-    <h2 class="font-semibold text-xl text-gray-800 dark:text-gray-200 leading-tight">
-      {{ __('Record一覧') }}
-    </h2>
-  </x-slot> -->
-
   <div class="py-12">
     <div class="max-w-7xl mx-auto sm:px-6 lg:px-8">
       <div class="bg-white dark:bg-gray-800 overflow-hidden shadow-sm sm:rounded-lg">
@@ -16,7 +10,7 @@
                 <th class="px-6 py-3 text-left text-sm font-medium text-gray-500 dark:text-gray-300">日付</th>
                 <th class="px-6 py-3 text-left text-sm font-medium text-gray-500 dark:text-gray-300">項目</th>
                 <th class="px-6 py-3 text-left text-sm font-medium text-gray-500 dark:text-gray-300">金額</th>
-                <th class="px-6 py-3 text-left text-sm font-medium text-gray-500 dark:text-gray-300">詳細</th>
+                <th class="px-6 py-3 text-left text-sm font-medium text-gray-500 dark:text-gray-300">編集</th>
               </tr>
             </thead>
             <tbody>
@@ -29,7 +23,7 @@
                   {{ number_format($ledger->amount) }} <!-- 桁区切り -->
                 </td>
                 <td class="px-6 py-4 whitespace-nowrap text-sm text-blue-500 hover:text-blue-700">
-                  <a href="{{ route('ledgers.show', $ledger) }}">詳細を見る</a>
+                  <a href="{{ route('ledgers.edit', $ledger) }}">Edit</a> <!-- 詳細を編集に変更 -->
                 </td>
               </tr>
               @endforeach

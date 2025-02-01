@@ -50,68 +50,54 @@ class LedgerController extends Controller
             return back()->withErrors(['end_date' => 'The end date must be before the start date.']);
         }
 
-
         // 繰り返しの単位を確認（月次/年次）
         $repeatMonthly = $request->has('repeat_monthly');
         $repeatYearly = $request->has('repeat_yearly');
-
-        // dd($repeatMonthly);
 
         // itemとamountを別の変数に保存
         $item = $request->input('item');
         $amount = $request->input('amount');
 
-        // ログインしているユーザーのデータとして新しいレコードを作成
-        // $this->createLedger($startDate, $item, $amount, Auth::id());
+        // 新しいgroupIDを生成（繰り返しレコード群に共通のIDを付与）
+        $groupID = $repeatMonthly || $repeatYearly ? uniqid('group_') : null; // 繰り返しがない場合はnull
 
         // 毎月または毎年繰り返しレコードを作成
         if (($repeatMonthly || $repeatYearly) && $endDate) {
             if ($repeatMonthly && !$repeatYearly) {
                 // 毎月繰り返し
                 while ($startDate <= $endDate) {
-                    // 新しい日付を設定してレコードを作成
-                    $this->createLedger($startDate, $item, $amount, Auth::id());
+                    $this->createLedger($startDate, $item, $amount, $groupID, Auth::id());
                     $startDate->addMonth(); // 1ヶ月後に進める
                 }
             } elseif ($repeatYearly && !$repeatMonthly) {
                 // 毎年繰り返し
                 while ($startDate <= $endDate) {
-                    // 新しい日付を設定してレコードを作成
-                    $this->createLedger($startDate, $item, $amount, Auth::id());
+                    $this->createLedger($startDate, $item, $amount, $groupID, Auth::id());
                     $startDate->addYear(); // 1年後に進める
                 }
             }
+        } else {
+            // 繰り返しがない場合は1つのレコードを作成
+            $this->createLedger($startDate, $item, $amount, $groupID, Auth::id());
         }
-        // dd("Start Date: " . $startDate->toDateString()."End Date: " . $endDate->toDateString());
+
         return redirect()->route('ledgers.index')->with('success', 'Ledger records created successfully.');
     }
 
+
     // レコード作成処理
-    private function createLedger($date, $item, $amount, $userId)
+    private function createLedger($date, $item, $amount, $groupID, $userId)
     {
         $ledger = new Ledger();
         $ledger->user_id = $userId; // ログインユーザーのID
         $ledger->date = $date->toDateString(); // 日付
         $ledger->item = $item; // アイテム
         $ledger->amount = $amount; // 金額
+        $ledger->group_id = $groupID; // グループIDを設定
         $ledger->save(); // 保存
     }
 
-    //     // ログインしているユーザーのデータとして新しいレコードを作成
-    //     $ledger = new Ledger();
-    //     $ledger->user_id = Auth::id(); // ログインユーザーのID
-    //     $ledger->date = $request->date;
-    //     $ledger->item = $request->item;
-    //     $ledger->amount = $request->amount;
-    //     $ledger->save();
 
-    //     // 成功後、一覧ページにリダイレクト
-    //     return redirect()->route('ledgers.index');
-    // }
-
-    /**
-     * Display the specified resource.
-     */
     public function show(Ledger $ledger)
     {
         // 詳細表示するためのLedgerデータを取得
@@ -126,9 +112,6 @@ class LedgerController extends Controller
         return view('ledgers.edit', compact('ledger'));
     }
 
-    /**
-     * Update the specified resource in storage.
-     */
     public function update(Request $request, Ledger $ledger)
     {
         // バリデーション
@@ -138,26 +121,67 @@ class LedgerController extends Controller
             'amount' => 'required|numeric',
         ]);
 
-        // 更新処理
-        $ledger->update([
-            'date' => $request->date,
-            'item' => $request->item,
-            'amount' => $request->amount,
-        ]);
+        // 編集方法の選択（チェックボックス）
+        $applyToLaterDates = $request->has('apply_to_later_dates'); // チェックボックスがチェックされているか
 
-        // 更新後、詳細ページにリダイレクト
-        return redirect()->route('ledgers.index', $ledger)->with('success', 'Record updated successfully');
+        // 更新アクション
+        if ($request->input('action') == 'update') {
+            // 更新処理
+            if ($applyToLaterDates && $ledger->group_id !== null) {
+                // 同じgroup_idを持つ、かつ当該データ日付以降のデータを更新
+                Ledger::where('user_id', Auth::id())
+                    ->where('group_id', $ledger->group_id) // group_idで絞り込み
+                    ->where('date', '>=', $ledger->date) // 当該データ日付以降のデータ
+                    ->update([
+                        'item' => $request->item,
+                        'amount' => $request->amount,
+                    ]);
+            } else {
+                // 当該データのみ編集
+                $ledger->date = $request->date;
+                $ledger->item = $request->item;
+                $ledger->amount = $request->amount;
+                $ledger->group_id = null; // group_idをnullに設定
+                $ledger->save(); // save()を使って更新
+            }
+        }
+
+        // 削除アクション
+        if ($request->input('action') == 'delete') {
+            if ($applyToLaterDates && $ledger->group_id !== null) {
+                // 同じgroup_idを持つ、かつ当該データ日付以降のデータを削除
+                Ledger::where('user_id', Auth::id())
+                    ->where('group_id', $ledger->group_id) // group_idで絞り込み
+                    ->where('date', '>=', $ledger->date) // 当該データ日付以降のデータ
+                    ->delete();
+            } else {
+                // 当該データのみ削除
+                $ledger->delete();
+            }
+        }
+
+        return redirect()->route('ledgers.index')->with('success', 'Record updated successfully.');
     }
 
-    /**
-     * Remove the specified resource from storage.
-     */
-    public function destroy(Ledger $ledger)
-    {
-        // 削除処理
-        $ledger->delete();
 
-        // 削除後、一覧ページにリダイレクト
-        return redirect()->route('ledgers.index')->with('success', 'Record deleted successfully');
+
+
+    public function destroy(Request $request, Ledger $ledger)
+    {
+        // // 削除方法の選択（チェックボックス）
+        // $deleteGroup = $request->has('delete_group'); // まとめて削除の場合のフラグ
+
+        // if ($deleteGroup) {
+        //     // 同じgroup_idを持ち、かつ当該データの日付以降のデータを削除
+        //     Ledger::where('user_id', Auth::id())
+        //         ->where('group_id', $ledger->group_id) // 同じgroup_idを持つデータを削除対象
+        //         ->where('date', '>=', $ledger->date)  // 当該データの日付以降のデータを削除
+        //         ->delete();
+        // } else {
+        //     // 当該データのみ削除
+        //     $ledger->delete();
+        // }
+
+        // return redirect()->route('ledgers.index')->with('success', 'Record deleted successfully');
     }
 }

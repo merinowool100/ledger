@@ -17,6 +17,7 @@ return new class extends Migration
             $table->date('date');
             $table->string('item');
             $table->integer('amount');
+            $table->string('group_id')->nullable()->after('amount');
             $table->timestamps();
         });
     }
