@@ -42,14 +42,13 @@
 
               <!-- 繰り返しボックス -->
               <div>
-                <!-- チェックボックスにして、どちらか一方だけ選べるようにする -->
-                <input type="checkbox" id="repeat_monthly" name="repeat_monthly" value="1" onclick="toggleCheckbox(this)"> Monthly  
+                <input type="checkbox" id="repeat_monthly" name="repeat_monthly" value="1" onclick="toggleCheckbox(this)"> Monthly
                 <input type="checkbox" id="repeat_yearly" name="repeat_yearly" value="1" onclick="toggleCheckbox(this)"> Yearly
 
                 <!-- 繰り返し終了日フィールド -->
                 <div class="" id="end_date_group" style="display: none;">
                   <label for="end_date">Repeat Until</label>
-                  <input type="date" class="form-control" id="end_date" name="end_date">
+                  <input type="date" class="form-control" id="end_date" name="end_date" value="{{ old('end_date', old('date')) }}">
                   @error('end_date')
                   <p class="mt-2 text-sm text-red-600 dark:text-red-400">{{ $message }}</p>
                   @enderror
@@ -70,31 +69,49 @@
   </div>
 
   <script>
-    // チェックボックスが選択された時の処理
-    function toggleCheckbox(selectedCheckbox) {
-      // どちらかのチェックボックスが選択されているか確認
-      const repeatMonthlyChecked = document.getElementById('repeat_monthly').checked;
-      const repeatYearlyChecked = document.getElementById('repeat_yearly').checked;
+  // ページ読み込み時に、繰り返しオプションが選ばれていない場合、end_date を今日の日付に設定
+  // document.addEventListener('DOMContentLoaded', function() {
+  //   const repeatMonthlyChecked = document.getElementById('repeat_monthly').checked;
+  //   const repeatYearlyChecked = document.getElementById('repeat_yearly').checked;
 
-      // 繰り返し終了日フィールドを取得
-      const endDateGroup = document.getElementById('end_date_group');
+    // 繰り返し設定が選ばれていない場合、end_date に今日の日付を設定
+    // if (!repeatMonthlyChecked && !repeatYearlyChecked) {
+    //   const today = new Date();
+    //   const todayString = today.toISOString().split('T')[0];  // YYYY-MM-DD 形式に変換
+    //   endDateField.value = todayString;
+    // }
 
-      // 月次または年次が選択されていれば終了日を表示
-      if (repeatMonthlyChecked || repeatYearlyChecked) {
-        endDateGroup.style.display = 'block';
+    // 繰り返しオプションの選択状態によって end_date フィールドを表示・非表示に
+    // if (repeatMonthlyChecked || repeatYearlyChecked) {
+    //   endDateGroup.style.display = 'block';
+    // } else {
+    //   endDateGroup.style.display = 'none';
+    // }
+  // });
+
+  // チェックボックスが選択された時の処理
+  function toggleCheckbox(selectedCheckbox) {
+    const repeatMonthlyChecked = document.getElementById('repeat_monthly').checked;
+    const repeatYearlyChecked = document.getElementById('repeat_yearly').checked;
+    const endDateGroup = document.getElementById('end_date_group');
+
+    // 月次または年次が選択されていれば終了日を表示
+    if (repeatMonthlyChecked || repeatYearlyChecked) {
+      endDateGroup.style.display = 'block';
+    } else {
+      endDateGroup.style.display = 'none';
+    }
+
+    // 他のチェックボックスを解除
+    if (selectedCheckbox.checked) {
+      if (selectedCheckbox.id === 'repeat_monthly') {
+        document.getElementById('repeat_yearly').checked = false;
       } else {
-        endDateGroup.style.display = 'none';
-      }
-
-      // 他のチェックボックスを解除
-      if (selectedCheckbox.checked) {
-        if (selectedCheckbox.id === 'repeat_monthly') {
-          document.getElementById('repeat_yearly').checked = false;
-        } else {
-          document.getElementById('repeat_monthly').checked = false;
-        }
+        document.getElementById('repeat_monthly').checked = false;
       }
     }
-  </script>
+  }
+</script>
+
 
 </x-app-layout>
