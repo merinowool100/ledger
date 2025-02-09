@@ -21,4 +21,7 @@ Route::middleware('auth')->group(function () {
     Route::resource('ledgers', LedgerController::class);
 });
 
+
 require __DIR__.'/auth.php';
+
+

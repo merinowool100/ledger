@@ -22,6 +22,9 @@
                     <x-nav-link :href="route('ledgers.create')" :active="request()->routeIs('ledgers.create')">
                         {{ __('New record') }}
                     </x-nav-link> -->
+                    <!-- 前月表示 -->
+                    <!-- 前月表示 -->
+
                 </div>
             </div>
 
