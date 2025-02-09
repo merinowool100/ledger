@@ -14,10 +14,15 @@ class LedgerController extends Controller
      */
     public function index()
     {
+        // 当月1日の日付を取得
+        $firstDayOfMonth = Carbon::now()->startOfMonth();
+
         $ledgers = Ledger::with('user')
             ->where('user_id', Auth::id())
+            ->where('date', '>=', $firstDayOfMonth)  // 当月1日以降のデータを取得
             ->orderBy('date', 'asc')
             ->get();
+
         return view('ledgers.index', compact('ledgers'));
     }
 
