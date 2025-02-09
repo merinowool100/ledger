@@ -16,12 +16,12 @@
                     <!-- <x-nav-link :href="route('dashboard')" :active="request()->routeIs('dashboard')">
                         {{ __('Dashboard') }}
                     </x-nav-link> -->
-                    <x-nav-link :href="route('ledgers.index')" :active="request()->routeIs('ledgers.index')">
+                    <!-- <x-nav-link :href="route('ledgers.index')" :active="request()->routeIs('ledgers.index')">
                         {{ __('Records') }}
                     </x-nav-link>
                     <x-nav-link :href="route('ledgers.create')" :active="request()->routeIs('ledgers.create')">
                         {{ __('New record') }}
-                    </x-nav-link>
+                    </x-nav-link> -->
                 </div>
             </div>
 

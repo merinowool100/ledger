@@ -58,6 +58,21 @@ class LedgerController extends Controller
         $item = $request->input('item');
         $amount = $request->input('amount');
 
+
+        // 新しい取引が追加された後、その取引を含む日付以降の取引を取得（同じuser_id、日付 >= 更新された日付）
+        $ledgers = Ledger::where('user_id', Auth::id())
+            ->where('date', '>=', $request->date)
+            ->orderBy('date', 'asc') // 日付順に並べる
+            ->get();
+
+        // 変更される取引の前のbalanceを取得（最初の取引のbalance）
+        $balance = 0;
+
+        if (!$ledgers) {
+            $firstLedger = $ledgers->first();
+            $balance = $firstLedger->balance - $request->amount; // その取引のbalanceから入力されたamountを引く
+        }
+
         // 新しいgroupIDを生成（繰り返しレコード群に共通のIDを付与）
         $groupID = $repeatMonthly || $repeatYearly ? uniqid('group_') : null; // 繰り返しがない場合はnull
 
@@ -80,6 +95,19 @@ class LedgerController extends Controller
             // 繰り返しがない場合は1つのレコードを作成
             $this->createLedger($startDate, $item, $amount, $groupID, Auth::id());
         }
+
+        // 新しい取引が追加された後、その取引を含む日付以降の取引を取得（同じuser_id、日付 >= 更新された日付）
+        $updatedLedgers = Ledger::where('user_id', Auth::id())
+            ->where('date', '>=', $request->date)
+            ->orderBy('date', 'asc') // 日付順に並べる
+            ->get();
+
+        foreach ($updatedLedgers as $updatedLedger) {
+            $updatedLedger->balance = $balance + $updatedLedger->amount;
+            $updatedLedger->save();
+            $balance = $updatedLedger->balance;
+        }
+
 
         return redirect()->route('ledgers.index')->with('success', 'Ledger records created successfully.');
     }
@@ -160,6 +188,30 @@ class LedgerController extends Controller
             }
         }
 
+        // 取引が編集・削除された後、その取引を含む日付以降の取引を取得（同じuser_id、日付 >= 更新された日付）
+        $updatedLedgers = Ledger::where('user_id', Auth::id())
+            ->where('date', '>=', $request->date)
+            ->orderBy('date', 'asc') // 日付順に並べる
+            ->get();
+
+        // requestの日付より古いledgerを一つ取得
+        $previousLedger = Ledger::where('user_id', Auth::id())
+            ->where('date', '<', $request->date)
+            ->orderBy('date', 'desc') // 最新の古いデータを取得
+            ->first();
+
+        // previousLedgerが存在すれば、そのbalanceを基準に設定
+        $balance = $previousLedger ? $previousLedger->balance : 0;
+
+        // 各ledgerに対してbalanceを更新
+        foreach ($updatedLedgers as $updatedLedger) {
+            // 新しいbalanceを計算
+            $updatedLedger->balance = $balance + $updatedLedger->amount;
+            $updatedLedger->save(); // 保存
+            // 次のledgerのためにbalanceを更新
+            $balance = $updatedLedger->balance;
+        }
+
         return redirect()->route('ledgers.index')->with('success', 'Record updated successfully.');
     }
 
@@ -184,4 +236,32 @@ class LedgerController extends Controller
 
         // return redirect()->route('ledgers.index')->with('success', 'Record deleted successfully');
     }
+
+    // private function updateBalance(Ledger $updatedLedger)
+    // {
+    //     // 新しい取引が追加された後、その取引を含む日付以降の取引を取得（同じuser_id、日付 >= 更新された日付）
+    //     $ledgers = Ledger::where('user_id', Auth::id())
+    //         ->where('date', '>=', $updatedLedger->date)
+    //         ->orderBy('date', 'asc') // 日付順に並べる
+    //         ->get();
+
+    //     // 変更される取引の前のbalanceを取得（最初の取引のbalance）
+    //     $firstLedger = $ledgers->first();
+    //     $balance = $firstLedger->balance - $updatedLedger->amount; // その取引のbalanceから入力されたamountを引く
+
+    //     // その後、順番にbalanceを更新
+    //     foreach ($ledgers as $ledger) {
+    //         // 新しい取引を挿入
+    //         if ($ledger->date == $updatedLedger->date) {
+    //             $ledger->balance = $balance + $updatedLedger->amount; // 新しい取引のbalanceは先のbalance + amount
+    //             $ledger->save(); // 保存
+    //             $balance = $ledger->balance; // 新しいbalanceを更新
+    //         } else {
+    //             // 次の取引のbalanceを計算（その取引のamountを加算）
+    //             $ledger->balance = $balance + $ledger->amount; // 新しいbalanceを設定
+    //             $ledger->save(); // 保存
+    //             $balance += $ledger->amount; // 次の取引では、amountを加算する
+    //         }
+    //     }
+    // }
 }

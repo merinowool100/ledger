@@ -8,9 +8,10 @@ use Illuminate\Database\Eloquent\Model;
 class Ledger extends Model
 {
     use HasFactory;
-    protected $fillable = ['date','item', 'amount'];
+    protected $fillable = ['date','item', 'amount', 'balance'];
     public function user()
     {
         return $this->belongsTo(User::class);
     }
+    
 }
