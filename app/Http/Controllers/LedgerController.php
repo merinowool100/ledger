@@ -12,19 +12,35 @@ class LedgerController extends Controller
     /**
      * Display a listing of the resource.
      */
-    public function index()
-    {
-        // 当月1日の日付を取得
+    public function index(Request $request)
+{
+
+    //クエリパラメーターからyearとmonthを取得
+    $year = $request->input('year');
+    $month = $request->input('month');
+
+    if ($year && $month) {
+        //指定された年月
+        $firstDayOfMonth = Carbon::parse("{$year}-{$month}-01")->startOfMonth();
+    } else {
+        //default
         $firstDayOfMonth = Carbon::now()->startOfMonth();
-
-        $ledgers = Ledger::with('user')
-            ->where('user_id', Auth::id())
-            ->where('date', '>=', $firstDayOfMonth)  // 当月1日以降のデータを取得
-            ->orderBy('date', 'asc')
-            ->get();
-
-        return view('ledgers.index', compact('ledgers'));
     }
+
+    $ledgers = Ledger::with('user')
+        ->where('user_id', Auth::id())
+        ->where('date', '>=', $firstDayOfMonth->toDateString())  // 当月1日以降のデータを取得
+        ->orderBy('date', 'asc')
+        ->get();
+
+    $prevMonth = $firstDayOfMonth->copy()->subMonth()->startOfMonth();
+    $nextMonth = $firstDayOfMonth->copy()->addMonth()->startOfMonth();
+    $prevYear = $firstDayOfMonth->copy()->subYear()->startOfMonth();
+    $nextYear = $firstDayOfMonth->copy()->addYear()->startOfMonth();
+
+    return view('ledgers.index', compact('ledgers', 'year', 'month', 'prevMonth', 'nextMonth', 'prevYear', 'nextYear'));
+}
+
 
     /**
      * Show the form for creating a new resource.
@@ -38,86 +54,87 @@ class LedgerController extends Controller
      * Store a newly created resource in storage.
      */
     public function store(Request $request)
-    {
-        // バリデーション
-        $request->validate([
-            'date' => 'required|date',
-            'item' => 'required|string|max:255',
-            'amount' => 'required|numeric',
-        ]);
+{
+    // バリデーション
+    $request->validate([
+        'date' => 'required|date',
+        'item' => 'required|string|max:255',
+        'amount' => 'required|numeric',
+    ]);
+    
+    
+    $startDate = Carbon::parse($request->input('date'));
+    $endDate = $request->has('end_date') 
+        ? Carbon::parse($request->input('end_date'))
+        : null; // 繰り返し終了日（選択されていれば取得）
 
-        // 入力された日付を取得
-        $startDate = Carbon::parse($request->input('date'));
-        $endDate = $request->has('end_date') ? Carbon::parse($request->input('end_date')) : null; // 繰り返し終了日（選択されていれば取得）
-
-        // endDateがstartDateより前の場合にエラーを出す
-        if ($endDate && $endDate->lt($startDate)) {
-            return back()->withErrors(['end_date' => 'The end date must be before the start date.']);
-        }
-
-        // 繰り返しの単位を確認（月次/年次）
-        $repeatMonthly = $request->has('repeat_monthly');
-        $repeatYearly = $request->has('repeat_yearly');
-
-        // itemとamountを別の変数に保存
-        $item = $request->input('item');
-        $amount = $request->input('amount');
-
-
-        // 新しい取引が追加された後、その取引を含む日付以降の取引を取得（同じuser_id、日付 >= 更新された日付）
-        $ledgers = Ledger::where('user_id', Auth::id())
-            ->where('date', '>=', $request->date)
-            ->orderBy('date', 'asc') // 日付順に並べる
-            ->get();
-
-        // 変更される取引の前のbalanceを取得（最初の取引のbalance）
-        $balance = 0;
-
-        if (!$ledgers) {
-            $firstLedger = $ledgers->first();
-            $balance = $firstLedger->balance - $request->amount; // その取引のbalanceから入力されたamountを引く
-        }
-
-        // 新しいgroupIDを生成（繰り返しレコード群に共通のIDを付与）
-        $groupID = $repeatMonthly || $repeatYearly ? uniqid('group_') : null; // 繰り返しがない場合はnull
-
-        // 毎月または毎年繰り返しレコードを作成
-        if (($repeatMonthly || $repeatYearly) && $endDate) {
-            if ($repeatMonthly && !$repeatYearly) {
-                // 毎月繰り返し
-                while ($startDate <= $endDate) {
-                    $this->createLedger($startDate, $item, $amount, $groupID, Auth::id());
-                    $startDate->addMonth(); // 1ヶ月後に進める
-                }
-            } elseif ($repeatYearly && !$repeatMonthly) {
-                // 毎年繰り返し
-                while ($startDate <= $endDate) {
-                    $this->createLedger($startDate, $item, $amount, $groupID, Auth::id());
-                    $startDate->addYear(); // 1年後に進める
-                }
-            }
-        } else {
-            // 繰り返しがない場合は1つのレコードを作成
-            $this->createLedger($startDate, $item, $amount, $groupID, Auth::id());
-        }
-
-        // 新しい取引が追加された後、その取引を含む日付以降の取引を取得（同じuser_id、日付 >= 更新された日付）
-        $updatedLedgers = Ledger::where('user_id', Auth::id())
-            ->where('date', '>=', $request->date)
-            ->orderBy('date', 'asc') // 日付順に並べる
-            ->get();
-
-        foreach ($updatedLedgers as $updatedLedger) {
-            $updatedLedger->balance = $balance + $updatedLedger->amount;
-            $updatedLedger->save();
-            $balance = $updatedLedger->balance;
-        }
-
-
-        return redirect()->route('ledgers.index')->with('success', 'Ledger records created successfully.');
+    // endDateがstartDateより前の場合にエラーを出す
+    if ($endDate && $endDate->lt($startDate)) {
+        return back()->withErrors(['end_date' => 'The end date must be before the start date.']);
     }
 
+    // 繰り返しの単位を確認（月次/年次）
+    $repeatMonthly = $request->has('repeat_monthly');
+    $repeatYearly = $request->has('repeat_yearly');
 
+    // itemとamountを別の変数に保存
+    $item = $request->input('item');
+    $amount = $request->input('amount');
+
+    // 新しい取引が追加された後、その取引を含む日付以降の取引を取得（同じuser_id、日付 >= 更新された日付）
+    $ledgers = Ledger::where('user_id', Auth::id())
+        ->where('date', '>=', $request->date)
+        ->orderBy('date', 'asc') // 日付順に並べる
+        ->get();
+
+    // 変更される取引の前のbalanceを取得（最初の取引のbalance）
+    if ($ledgers->isEmpty()) {
+        $balance = 0;  // 取引がない場合は初期状態のbalance
+    } else {
+        $firstLedger = $ledgers->first();
+        $balance = $firstLedger->balance - $request->amount;
+    }
+
+    // 新しいgroupIDを生成（繰り返しレコード群に共通のIDを付与）
+    $groupID = $repeatMonthly || $repeatYearly ? uniqid('group_') : null; // 繰り返しがない場合はnull
+
+    // 毎月または毎年繰り返しレコードを作成
+    if (($repeatMonthly || $repeatYearly) && $endDate) {
+        if ($repeatMonthly && !$repeatYearly) {
+            // 毎月繰り返し
+            while ($startDate <= $endDate) {
+                $this->createLedger($startDate, $item, $amount, $groupID, Auth::id());
+                $startDate->addMonth(); // 1ヶ月後に進める
+            }
+        } elseif ($repeatYearly && !$repeatMonthly) {
+            // 毎年繰り返し
+            while ($startDate <= $endDate) {
+                $this->createLedger($startDate, $item, $amount, $groupID, Auth::id());
+                $startDate->addYear(); // 1年後に進める
+            }
+        }
+    } else {
+        // 繰り返しがない場合は1つのレコードを作成
+        $this->createLedger($startDate, $item, $amount, $groupID, Auth::id());
+    }
+
+    // 新しい取引が追加された後、その取引を含む日付以降の取引を取得（同じuser_id、日付 >= 更新された日付）
+    $updatedLedgers = Ledger::where('user_id', Auth::id())
+        ->where('date', '>=', $request->date)
+        ->orderBy('date', 'asc') // 日付順に並べる
+        ->get();
+
+    foreach ($updatedLedgers as $updatedLedger) {
+        $updatedLedger->balance = $balance + $updatedLedger->amount;
+        $updatedLedger->save();
+        $balance = $updatedLedger->balance;
+    }
+
+    return redirect()->route('ledgers.index')->with('success', 'Ledger records created successfully.');
+}
+
+    
+    
     // レコード作成処理
     private function createLedger($date, $item, $amount, $groupID, $userId)
     {
@@ -129,7 +146,7 @@ class LedgerController extends Controller
         $ledger->group_id = $groupID; // グループIDを設定
         $ledger->save(); // 保存
     }
-
+    
 
     public function show(Ledger $ledger)
     {
@@ -220,53 +237,4 @@ class LedgerController extends Controller
         return redirect()->route('ledgers.index')->with('success', 'Record updated successfully.');
     }
 
-
-
-
-    public function destroy(Request $request, Ledger $ledger)
-    {
-        // // 削除方法の選択（チェックボックス）
-        // $deleteGroup = $request->has('delete_group'); // まとめて削除の場合のフラグ
-
-        // if ($deleteGroup) {
-        //     // 同じgroup_idを持ち、かつ当該データの日付以降のデータを削除
-        //     Ledger::where('user_id', Auth::id())
-        //         ->where('group_id', $ledger->group_id) // 同じgroup_idを持つデータを削除対象
-        //         ->where('date', '>=', $ledger->date)  // 当該データの日付以降のデータを削除
-        //         ->delete();
-        // } else {
-        //     // 当該データのみ削除
-        //     $ledger->delete();
-        // }
-
-        // return redirect()->route('ledgers.index')->with('success', 'Record deleted successfully');
-    }
-
-    // private function updateBalance(Ledger $updatedLedger)
-    // {
-    //     // 新しい取引が追加された後、その取引を含む日付以降の取引を取得（同じuser_id、日付 >= 更新された日付）
-    //     $ledgers = Ledger::where('user_id', Auth::id())
-    //         ->where('date', '>=', $updatedLedger->date)
-    //         ->orderBy('date', 'asc') // 日付順に並べる
-    //         ->get();
-
-    //     // 変更される取引の前のbalanceを取得（最初の取引のbalance）
-    //     $firstLedger = $ledgers->first();
-    //     $balance = $firstLedger->balance - $updatedLedger->amount; // その取引のbalanceから入力されたamountを引く
-
-    //     // その後、順番にbalanceを更新
-    //     foreach ($ledgers as $ledger) {
-    //         // 新しい取引を挿入
-    //         if ($ledger->date == $updatedLedger->date) {
-    //             $ledger->balance = $balance + $updatedLedger->amount; // 新しい取引のbalanceは先のbalance + amount
-    //             $ledger->save(); // 保存
-    //             $balance = $ledger->balance; // 新しいbalanceを更新
-    //         } else {
-    //             // 次の取引のbalanceを計算（その取引のamountを加算）
-    //             $ledger->balance = $balance + $ledger->amount; // 新しいbalanceを設定
-    //             $ledger->save(); // 保存
-    //             $balance += $ledger->amount; // 次の取引では、amountを加算する
-    //         }
-    //     }
-    // }
 }
