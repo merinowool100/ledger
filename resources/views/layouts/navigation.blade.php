@@ -22,15 +22,8 @@
                     <x-nav-link :href="route('ledgers.create')" :active="request()->routeIs('ledgers.create')">
                         {{ __('New record') }}
                     </x-nav-link> -->
-                    <div>
-                        <!-- 前月 -->
-                        <a href="{{ route('dashboard', ['year' => $prevMonth->year, 'month' => $prevMonth->month]) }}">前月</a>
-                        <!-- 翌月 -->
-                        <a href="{{ route('dashboard', ['year' => $nextMonth->year, 'month' => $nextMonth->month]) }}">翌月</a>
-                    </div>
-
-
-
+                    <!-- 前月表示 -->
+                    <!-- 前月表示 -->
 
                 </div>
             </div>

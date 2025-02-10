@@ -2,24 +2,24 @@
   <div class="container">
 
     <!-- 年月選択フォーム -->
-    <form action="{{ route('dashboard') }}" method="GET" class="mb-3 d-flex">
+    <!-- <form action="{{ route('dashboard') }}" method="GET" class="mb-3 d-flex"> -->
       <!-- 年選択 -->
-      <select name="year" class="form-select me-2">
+      <!-- <select name="year" class="form-select me-2">
         @for ($y = now()->year - 5; $y <= now()->year + 1; $y++)
           <option value="{{ $y }}" {{ $y == ($year ?? now()->year) ? 'selected' : '' }}>{{ $y }}年</option>
           @endfor
-      </select>
+      </select> -->
 
       <!-- 月選択 -->
-      <select name="month" class="form-select me-2">
+      <!-- <select name="month" class="form-select me-2">
         @for ($m = 1; $m <= 12; $m++)
           <option value="{{ $m }}" {{ $m == ($month ?? now()->month) ? 'selected' : '' }}>{{ $m }}月</option>
           @endfor
-      </select>
+      </select> -->
 
       <!-- 検索ボタン -->
-      <button type="submit" class="btn btn-primary">表示</button>
-    </form>
+      <!-- <button type="submit" class="btn btn-primary">表示</button>
+    </form> -->
 
     <!-- 前月・翌月ボタン -->
     <div class="d-flex justify-content-between mb-3">
