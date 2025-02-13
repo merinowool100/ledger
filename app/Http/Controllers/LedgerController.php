@@ -38,7 +38,7 @@ class LedgerController extends Controller
     $prevYear = $firstDayOfMonth->copy()->subYear()->startOfMonth();
     $nextYear = $firstDayOfMonth->copy()->addYear()->startOfMonth();
 
-    return view('ledgers.index', compact('ledgers', 'year', 'month', 'prevMonth', 'nextMonth', 'prevYear', 'nextYear'));
+    return view('ledgers.index', compact('ledgers', 'year', 'month', 'prevMonth', 'nextMonth', 'prevYear', 'nextYear', 'firstDayOfMonth'));
 }
 
 

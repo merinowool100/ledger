@@ -23,16 +23,20 @@
              </form> -->
 
             <!-- 前月・翌月ボタン -->
-            <div style="height:5px;"></div>
+            <div style="height:20px;"></div>
             <div class="d-flex justify-content-between" style="display:flex; justify-content:center;">
                 <a href=" {{ route('dashboard', ['year' => $prevMonth->year, 'month' => $prevMonth->month]) }}"
                     class="btn btn-outline-primary">
-                    &lt; Prev Month ({{ $prevMonth->year }}/{{ $prevMonth->month }})
+                    &lt; Prev
                 </a>
-                <div style="width:50px;"></div>
+                <div style="width:30px;"></div>
+                <div class=" d-flex justify-content-between" style="display:flex; justify-content:center;">
+                    After &nbsp;<strong>{{ $firstDayOfMonth->format('F') }} {{ $firstDayOfMonth->year }}</strong>
+                </div>
+                <div style="width:30px;"></div>
                 <a href="{{ route('dashboard', ['year' => $nextMonth->year, 'month' => $nextMonth->month]) }}"
                     class="btn btn-outline-primary">
-                    Next Month ({{ $nextMonth->year }}/{{ $nextMonth->month }}) &gt;
+                    Next &gt;
                 </a>
             </div>
 
