@@ -61,19 +61,19 @@
                                         <tr class="border-b border-gray-200 dark:border-gray-700">
                                             <th
                                                 class="px-6 py-3 text-left text-sm font-medium text-gray-500 dark:text-gray-300">
-                                                日付</th>
+                                                Date</th>
                                             <th
                                                 class="px-6 py-3 text-left text-sm font-medium text-gray-500 dark:text-gray-300">
-                                                項目</th>
+                                                Item</th>
                                             <th
                                                 class="px-6 py-3 text-left text-sm font-medium text-gray-500 dark:text-gray-300">
-                                                金額</th>
+                                                Amount</th>
                                             <th
                                                 class="px-6 py-3 text-left text-sm font-medium text-gray-500 dark:text-gray-300">
-                                                繰り返し</th>
+                                                Repeat</th>
                                             <th
                                                 class="px-6 py-3 text-left text-sm font-medium text-gray-500 dark:text-gray-300">
-                                                繰り返し終了日</th>
+                                                Until</th>
                                         </tr>
                                     </thead>
                                     <tbody>
@@ -151,7 +151,7 @@
                                                     style="width:90px; font-size: 20px;">
                                                     <button type="submit"
                                                         class="inline-flex items-center px-4 py-2 bg-indigo-600 text-white font-semibold text-sm rounded-md shadow-sm hover:bg-indigo-700 focus:outline-none focus:ring-2 focus:ring-indigo-500 focus:ring-offset-2 dark:bg-indigo-700 dark:hover:bg-indigo-600">
-                                                        保存
+                                                        Save
                                                     </button>
                                                 </td>
                                             </tr>
@@ -177,15 +177,15 @@
                                     <thead>
                                         <tr class="border-b border-gray-200 dark:border-gray-700">
                                             <th class="px-6 py-3 text-left text-sm font-medium text-gray-500 dark:text-gray-300"
-                                                style="width:200px;">日付</th>
+                                                style="width:200px;">Date</th>
                                             <th class="px-6 py-3 text-left text-sm font-medium text-gray-500 dark:text-gray-300"
-                                                style="min-width:200px;">項目</th>
+                                                style="min-width:200px;">Item</th>
                                             <th
                                                 class="px-6 py-3 text-left text-sm font-medium text-gray-500 dark:text-gray-300">
-                                                金額</th>
+                                                Amount</th>
                                             <th
                                                 class="px-6 py-3 text-left text-sm font-medium text-gray-500 dark:text-gray-300">
-                                                残高</th>
+                                                Balance</th>
                                         </tr>
                                     </thead>
                                     <tbody>
