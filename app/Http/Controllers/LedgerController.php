@@ -72,7 +72,15 @@ class LedgerController extends Controller
             return $rows->sum('balance');
         });
 
-        return view('ledgers.index', compact('ledgers', 'perPage', 'allAccounts', 'latestConfirmed', 'totalLiquidAssets'));
+        return view('ledgers.index', compact(
+            'ledgers',
+            'perPage',
+            'allAccounts',
+            'latestConfirmed',
+            'totalLiquidAssets',
+            'year',
+            'month'
+        ));
     }
 
 
