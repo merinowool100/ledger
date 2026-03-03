@@ -5,6 +5,8 @@ namespace App\Http\Controllers;
 use App\Models\Ledger;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Auth;
+use Illuminate\Support\Facades\Cache;
+use Illuminate\Support\Str;
 use Carbon\Carbon;
 
 class LedgerController extends Controller
@@ -13,33 +15,65 @@ class LedgerController extends Controller
      * Display a listing of the resource.
      */
     public function index(Request $request)
-{
+    {
+        // pagination choice (default 10)
+        $perPage = intval($request->input('perPage', 10));
+        if (!in_array($perPage, [10, 30, 50])) {
+            $perPage = 10;
+        }
 
-    //クエリパラメーターからyearとmonthを取得
-    $year = $request->input('year');
-    $month = $request->input('month');
+        $accountFilter = $request->input('account');
 
-    if ($year && $month) {
-        //指定された年月
-        $firstDayOfMonth = Carbon::parse("{$year}-{$month}-01")->startOfMonth();
-    } else {
-        //default
-        $firstDayOfMonth = Carbon::now()->startOfMonth();
+        // latest confirmed transaction date: treat date <= today as "confirmed"
+        $today = Carbon::today()->toDateString();
+        $latestConfirmed = Ledger::where('user_id', Auth::id())
+            ->when($accountFilter, function ($q) use ($accountFilter) {
+                $q->where('account_id', $accountFilter);
+            })
+            ->where('date', '<=', $today)
+            ->max('date');
+
+        if (!$latestConfirmed) {
+            // fallback to latest ledger date for the user/account or today
+            $latestConfirmed = Ledger::where('user_id', Auth::id())
+                ->when($accountFilter, function ($q) use ($accountFilter) {
+                    $q->where('account_id', $accountFilter);
+                })
+                ->max('date') ?: $today;
+        }
+
+        // optimize: select only necessary columns and eager load relations
+        $query = Ledger::with('account')
+            ->select(['id','user_id','account_id','date','item','amount','balance','transaction_id','version','effective_time'])
+            ->where('user_id', Auth::id())
+            ->when($accountFilter, function ($q) use ($accountFilter) {
+                $q->where('account_id', $accountFilter);
+            })
+            ->where('date', '<=', $latestConfirmed)
+            ->where('item', '<>', 'Horizon placeholder')
+            ->orderBy('date', 'desc')
+            ->orderBy('effective_time', 'desc')
+            ->orderBy('id', 'desc');
+
+        // use simplePaginate to avoid expensive total counts on large datasets
+        $ledgers = $query->simplePaginate($perPage)->appends(['perPage' => $perPage, 'account' => $accountFilter]);
+
+        $allAccounts = Auth::user()->accounts()->get();
+
+        $userId = Auth::id();
+        $totalLiquidAssets = Cache::remember("user:{$userId}:total_liquid_assets", 300, function() use ($userId) {
+            $rows = Ledger::where('user_id', $userId)
+                ->where('item', '<>', 'Horizon placeholder')
+                ->whereNotNull('account_id')
+                ->orderBy('date', 'desc')
+                ->orderBy('effective_time', 'desc')
+                ->get()
+                ->unique('account_id');
+            return $rows->sum('balance');
+        });
+
+        return view('ledgers.index', compact('ledgers', 'perPage', 'allAccounts', 'latestConfirmed', 'totalLiquidAssets'));
     }
-
-    $ledgers = Ledger::with('user')
-        ->where('user_id', Auth::id())
-        ->where('date', '>=', $firstDayOfMonth->toDateString())  // 当月1日以降のデータを取得
-        ->orderBy('date', 'asc')
-        ->get();
-
-    $prevMonth = $firstDayOfMonth->copy()->subMonth()->startOfMonth();
-    $nextMonth = $firstDayOfMonth->copy()->addMonth()->startOfMonth();
-    $prevYear = $firstDayOfMonth->copy()->subYear()->startOfMonth();
-    $nextYear = $firstDayOfMonth->copy()->addYear()->startOfMonth();
-
-    return view('ledgers.index', compact('ledgers', 'year', 'month', 'prevMonth', 'nextMonth', 'prevYear', 'nextYear', 'firstDayOfMonth'));
-}
 
 
     /**
@@ -47,7 +81,8 @@ class LedgerController extends Controller
      */
     public function create()
     {
-        return view('ledgers.create');
+        $accounts = Auth::user()->accounts()->get();
+        return view('ledgers.create', compact('accounts'));
     }
 
     /**
@@ -60,10 +95,11 @@ class LedgerController extends Controller
         'date' => 'required|date',
         'item' => 'required|string|max:255',
         'amount' => 'required|numeric',
+        'account_id' => 'required|integer|exists:accounts,id',
     ]);
     
-    
     $startDate = Carbon::parse($request->input('date'));
+    $accountId = $request->input('account_id');
     $endDate = $request->has('end_date') 
         ? Carbon::parse($request->input('end_date'))
         : null; // 繰り返し終了日（選択されていれば取得）
@@ -83,6 +119,7 @@ class LedgerController extends Controller
 
     // 新しい取引が追加された後、その取引を含む日付以降の取引を取得（同じuser_id、日付 >= 更新された日付）
     $ledgers = Ledger::where('user_id', Auth::id())
+        ->where('account_id', $accountId)
         ->where('date', '>=', $request->date)
         ->orderBy('date', 'asc') // 日付順に並べる
         ->get();
@@ -98,28 +135,31 @@ class LedgerController extends Controller
     // 新しいgroupIDを生成（繰り返しレコード群に共通のIDを付与）
     $groupID = $repeatMonthly || $repeatYearly ? uniqid('group_') : null; // 繰り返しがない場合はnull
 
+    // insert new ledgers taking account into account
+
     // 毎月または毎年繰り返しレコードを作成
     if (($repeatMonthly || $repeatYearly) && $endDate) {
         if ($repeatMonthly && !$repeatYearly) {
             // 毎月繰り返し
             while ($startDate <= $endDate) {
-                $this->createLedger($startDate, $item, $amount, $groupID, Auth::id());
+                $this->createLedger($startDate, $item, $amount, $groupID, Auth::id(), null, null, $accountId);
                 $startDate->addMonth(); // 1ヶ月後に進める
             }
         } elseif ($repeatYearly && !$repeatMonthly) {
             // 毎年繰り返し
             while ($startDate <= $endDate) {
-                $this->createLedger($startDate, $item, $amount, $groupID, Auth::id());
+                $this->createLedger($startDate, $item, $amount, $groupID, Auth::id(), null, null, $accountId);
                 $startDate->addYear(); // 1年後に進める
             }
         }
     } else {
         // 繰り返しがない場合は1つのレコードを作成
-        $this->createLedger($startDate, $item, $amount, $groupID, Auth::id());
+        $this->createLedger($startDate, $item, $amount, $groupID, Auth::id(), null, null, $accountId);
     }
 
     // 新しい取引が追加された後、その取引を含む日付以降の取引を取得（同じuser_id、日付 >= 更新された日付）
     $updatedLedgers = Ledger::where('user_id', Auth::id())
+        ->where('account_id', $accountId)
         ->where('date', '>=', $request->date)
         ->orderBy('date', 'asc') // 日付順に並べる
         ->get();
@@ -130,20 +170,30 @@ class LedgerController extends Controller
         $balance = $updatedLedger->balance;
     }
 
+    // extend horizon for this account
+    $this->ensureFiveYearHorizon($accountId);
+
+    // invalidate cached total assets
+    Cache::forget('user:' . Auth::id() . ':total_liquid_assets');
+
     return redirect()->route('ledgers.index')->with('success', 'Ledger records created successfully.');
 }
 
     
     
     // レコード作成処理
-    private function createLedger($date, $item, $amount, $groupID, $userId)
+    private function createLedger($date, $item, $amount, $groupID, $userId, $transactionId = null, $version = null, $accountId = null)
     {
         $ledger = new Ledger();
         $ledger->user_id = $userId; // ログインユーザーのID
+        $ledger->account_id = $accountId;
         $ledger->date = $date->toDateString(); // 日付
         $ledger->item = $item; // アイテム
         $ledger->amount = $amount; // 金額
         $ledger->group_id = $groupID; // グループIDを設定
+        // synchronization fields
+        $ledger->transaction_id = $transactionId ?? (string) Str::uuid();
+        $ledger->version = $version ?? 1;
         $ledger->save(); // 保存
     }
     
@@ -169,7 +219,9 @@ class LedgerController extends Controller
             'date' => 'required|date',
             'item' => 'required|string|max:255',
             'amount' => 'required|numeric',
+            'account_id' => 'required|integer|exists:accounts,id',
         ]);
+        $accountId = $request->input('account_id');
 
         // 編集方法の選択（チェックボックス）
         $applyToLaterDates = $request->has('apply_to_later_dates'); // チェックボックスがチェックされているか
@@ -182,16 +234,26 @@ class LedgerController extends Controller
                 Ledger::where('user_id', Auth::id())
                     ->where('group_id', $ledger->group_id) // group_idで絞り込み
                     ->where('date', '>=', $ledger->date) // 当該データ日付以降のデータ
+                    ->where('account_id', $accountId)
+                    ->increment('version');
+
+                Ledger::where('user_id', Auth::id())
+                    ->where('group_id', $ledger->group_id) // group_idで絞り込み
+                    ->where('date', '>=', $ledger->date) // 当該データ日付以降のデータ
+                    ->where('account_id', $accountId)
                     ->update([
                         'item' => $request->item,
                         'amount' => $request->amount,
+                        'account_id' => $accountId,
                     ]);
             } else {
                 // 当該データのみ編集
                 $ledger->date = $request->date;
                 $ledger->item = $request->item;
                 $ledger->amount = $request->amount;
+                $ledger->account_id = $accountId;
                 $ledger->group_id = null; // group_idをnullに設定
+                $ledger->version = $ledger->version + 1;
                 $ledger->save(); // save()を使って更新
             }
         }
@@ -203,6 +265,7 @@ class LedgerController extends Controller
                 Ledger::where('user_id', Auth::id())
                     ->where('group_id', $ledger->group_id) // group_idで絞り込み
                     ->where('date', '>=', $ledger->date) // 当該データ日付以降のデータ
+                    ->where('account_id', $accountId)
                     ->delete();
             } else {
                 // 当該データのみ削除
@@ -218,6 +281,7 @@ class LedgerController extends Controller
 
         // requestの日付より古いledgerを一つ取得
         $previousLedger = Ledger::where('user_id', Auth::id())
+            ->where('account_id', $accountId)
             ->where('date', '<', $request->date)
             ->orderBy('date', 'desc') // 最新の古いデータを取得
             ->first();
@@ -234,7 +298,130 @@ class LedgerController extends Controller
             $balance = $updatedLedger->balance;
         }
 
+        // after update, ensure we still have a 5-year placeholder
+        $this->ensureFiveYearHorizon($accountId);
+
+        // invalidate cached total assets
+        Cache::forget('user:' . Auth::id() . ':total_liquid_assets');
+
         return redirect()->route('ledgers.index')->with('success', 'Record updated successfully.');
+    }
+
+    // make sure there is at least one transaction five years beyond the last date for account
+    private function ensureFiveYearHorizon($accountId)
+    {
+        $userId = Auth::id();
+        $last = Ledger::where('user_id', $userId)
+            ->where('account_id', $accountId)
+            ->orderBy('date', 'desc')
+            ->first();
+        if (!$last) {
+            return;
+        }
+        $target = Carbon::parse($last->date)->addYears(5)->toDateString();
+        $exists = Ledger::where('user_id', $userId)
+            ->where('account_id', $accountId)
+            ->where('date', '>=', $target)
+            ->exists();
+        if (!$exists) {
+            $this->createLedger(Carbon::parse($target), 'Horizon placeholder', 0, null, $userId, null, null, $accountId);
+        }
+    }
+
+    /**
+     * Delete a ledger record
+     */
+    public function destroy(Ledger $ledger)
+    {
+        // Verify user owns this ledger
+        if ($ledger->user_id !== Auth::id()) {
+            abort(403);
+        }
+
+        $accountId = $ledger->account_id;
+        $ledger->delete();
+
+        // Recalculate balance for later transactions in same account
+        if ($accountId) {
+            $updatedLedgers = Ledger::where('user_id', Auth::id())
+                ->where('account_id', $accountId)
+                ->orderBy('date', 'asc')
+                ->where('date', '>=', $ledger->date)
+                ->get();
+
+            $previousLedger = Ledger::where('user_id', Auth::id())
+                ->where('account_id', $accountId)
+                ->where('date', '<', $ledger->date)
+                ->orderBy('date', 'desc')
+                ->first();
+
+            $balance = $previousLedger ? $previousLedger->balance : 0;
+            foreach ($updatedLedgers as $updated) {
+                $updated->balance = $balance + $updated->amount;
+                $updated->save();
+                $balance = $updated->balance;
+            }
+        }
+
+        // Invalidate cache
+        Cache::forget('user:' . Auth::id() . ':total_liquid_assets');
+
+        return redirect()->route('ledgers.index')->with('success', 'Record deleted successfully.');
+    }
+
+    /**
+     * Export ledgers as CSV
+     */
+    public function export(Request $request)
+    {
+        $userId = Auth::id();
+        $accountFilter = $request->input('account');
+
+        // Get latest confirmed
+        $today = Carbon::today()->toDateString();
+        $latestConfirmed = Ledger::where('user_id', $userId)
+            ->when($accountFilter, function ($q) use ($accountFilter) {
+                $q->where('account_id', $accountFilter);
+            })
+            ->where('date', '<=', $today)
+            ->max('date');
+
+        if (!$latestConfirmed) {
+            $latestConfirmed = Ledger::where('user_id', $userId)
+                ->when($accountFilter, function ($q) use ($accountFilter) {
+                    $q->where('account_id', $accountFilter);
+                })
+                ->max('date') ?: $today;
+        }
+
+        // Query matching index filters
+        $ledgers = Ledger::with('account')
+            ->where('user_id', $userId)
+            ->when($accountFilter, function ($q) use ($accountFilter) {
+                $q->where('account_id', $accountFilter);
+            })
+            ->where('date', '<=', $latestConfirmed)
+            ->where('item', '<>', 'Horizon placeholder')
+            ->orderBy('date', 'desc')
+            ->orderBy('effective_time', 'desc')
+            ->get();
+
+        // Build CSV
+        $csv = "Date,Account,Item,Amount,Balance\n";
+        foreach ($ledgers as $ledger) {
+            $csv .= sprintf(
+                "%s,%s,%s,%d,%d\n",
+                $ledger->date,
+                optional($ledger->account)->name ?? '',
+                '"' . str_replace('"', '""', $ledger->item) . '"',
+                $ledger->amount,
+                $ledger->balance
+            );
+        }
+
+        return response($csv)
+            ->header('Content-Type', 'text/csv')
+            ->header('Content-Disposition', 'attachment; filename="ledger_' . now()->format('Ymd_His') . '.csv"');
     }
 
 }

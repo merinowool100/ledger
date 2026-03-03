@@ -31,6 +31,20 @@
                 @enderror
               </div>
 
+              <!-- account -->
+              <div>
+                <label for="account_id" class="block text-sm font-medium text-gray-700 dark:text-gray-300">Account</label>
+                <select name="account_id" id="account_id" required class="mt-1 block w-full px-4 py-2 border border-gray-300 rounded-md">
+                    <option value="">-- select --</option>
+                    @foreach($accounts as $acct)
+                        <option value="{{ $acct->id }}" {{ old('account_id')==$acct->id ? 'selected' : '' }}>{{ $acct->name }}</option>
+                    @endforeach
+                </select>
+                @error('account_id')
+                <p class="mt-2 text-sm text-red-600 dark:text-red-400">{{ $message }}</p>
+                @enderror
+              </div>
+
               <!-- 金額 -->
               <div>
                 <label for="amount" class="block text-sm font-medium text-gray-700 dark:text-gray-300">金額</label>
