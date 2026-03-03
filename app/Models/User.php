@@ -6,6 +6,7 @@ namespace App\Models;
 use Illuminate\Database\Eloquent\Factories\HasFactory;
 use Illuminate\Foundation\Auth\User as Authenticatable;
 use Illuminate\Notifications\Notifiable;
+use App\Models\Account;
 
 class User extends Authenticatable
 {
@@ -49,6 +50,14 @@ class User extends Authenticatable
     public function ledgers()
     {
         return $this->hasMany(Ledger::class);
+    }
+
+    /**
+     * A user can have multiple accounts.
+     */
+    public function accounts()
+    {
+        return $this->hasMany(Account::class);
     }
 
 }
