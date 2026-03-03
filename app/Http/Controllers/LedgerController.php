@@ -24,6 +24,10 @@ class LedgerController extends Controller
 
         $accountFilter = $request->input('account');
 
+        // year/month filters for navigation (default to current values)
+        $year  = $request->input('year',  Carbon::now()->year);
+        $month = $request->input('month', Carbon::now()->month);
+
         // latest confirmed transaction date: treat date <= today as "confirmed"
         $today = Carbon::today()->toDateString();
         $latestConfirmed = Ledger::where('user_id', Auth::id())
