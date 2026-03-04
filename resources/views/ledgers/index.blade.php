@@ -324,6 +324,7 @@
             // show placeholder when no rows
             if (ledgerRows.length === 0) {
                 document.getElementById('chartPlaceholder').style.display = 'block';
+                document.getElementById('forecastChart').style.display = 'none';
                 return;
             }
 
@@ -357,7 +358,13 @@
                 return 'rgba(201,203,207,1)';
             };
 
-            new Chart(ctx, {
+            try {
+                new Chart(ctx, {
+            } catch(e) {
+                console.error('Chart initialization failed', e);
+                document.getElementById('chartPlaceholder').textContent = 'Failed to render chart: ' + e;
+                document.getElementById('chartPlaceholder').style.display = 'block';
+            }
                 type: 'line',
                 data: {
                     labels: labels,
@@ -419,13 +426,24 @@
                             'Accept': 'application/json'
                         }
                     });
-                    if (res.ok) {
+                    console.log('confirm response', res.status, res.statusText);
+                    if (!res.ok) {
+                        const text = await res.text();
+                        console.error('confirm body', text);
+                        alert('Failed to confirm (' + res.status + ')');
+                        location.reload();
+                        return;
+                    }
+                    const data = await res.json().catch(e=>{console.error('json parse',e);return null;});
+                    console.log('confirm json', data);
+                    if (data && data.success) {
                         location.reload();
                     } else {
-                        alert('Failed to confirm');
+                        alert('Failed to confirm: ' + (data && data.message ? data.message : 'unknown'));
                         location.reload();
                     }
                 } catch(e) {
+                    console.error('confirm error', e);
                     alert('Error: ' + e);
                     location.reload();
                 }
@@ -642,37 +660,51 @@ function updateDayOptions() {
 document.querySelectorAll('.amount-input').forEach(input => {
     input.addEventListener('blur', function() {
         if (this.disabled) return; // Skip if confirmed
-        
+
         const ledgerId = this.getAttribute('data-ledger-id');
         const newAmount = this.value;
-        
+
         if (!newAmount || isNaN(newAmount)) {
             alert('Invalid amount');
             return;
         }
-        
+
         // PATCH request to update
         fetch(`/ledgers/${ledgerId}/update-inline`, {
             method: 'PATCH',
             headers: {
                 'Content-Type': 'application/json',
-                'X-CSRF-TOKEN': document.querySelector('meta[name="csrf-token"]').getAttribute('content')
+                'X-CSRF-TOKEN': document.querySelector('meta[name="csrf-token"]').getAttribute('content'),
+                'Accept': 'application/json'
             },
             body: JSON.stringify({
                 amount: parseInt(newAmount)
             })
         })
-        .then(response => response.json())
+        .then(async response => {
+            if (!response.ok) {
+                const text = await response.text();
+                console.error('Update failed', response.status, text);
+                alert('Error updating (' + response.status + ')');
+                return null;
+            }
+            try {
+                return await response.json();
+            } catch(e) {
+                console.error('JSON parse error', e);
+                alert('Error updating (bad response)');
+                return null;
+            }
+        })
         .then(data => {
-            if (data.success) {
-                // Reload to show updated balance
+            if (data && data.success) {
                 location.reload();
-            } else {
-                alert('Error updating');
+            } else if (data) {
+                alert('Error updating: ' + (data.message || 'unknown'));
             }
         })
         .catch(error => {
-            console.error('Error:', error);
+            console.error('Fetch error:', error);
             alert('Error updating');
         });
     });

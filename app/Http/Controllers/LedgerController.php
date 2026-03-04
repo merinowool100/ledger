@@ -555,17 +555,23 @@ class LedgerController extends Controller
     /**
      * Confirm a pending ledger record (mark as confirmed)
      */
-    public function confirm($id)
+    public function confirm($id, Request $request)
     {
         $ledger = Ledger::findOrFail($id);
 
         // Verify ownership
         if ($ledger->user_id !== Auth::id()) {
+            if ($request->wantsJson()) {
+                return response()->json(['success' => false, 'message' => 'Forbidden'], 403);
+            }
             abort(403);
         }
 
         // Only pending records can be confirmed
         if ($ledger->status !== 'pending') {
+            if ($request->wantsJson()) {
+                return response()->json(['success' => false, 'message' => 'Only pending records can be confirmed.'], 400);
+            }
             return back()->with('error', 'Only pending records can be confirmed.');
         }
 
@@ -573,6 +579,10 @@ class LedgerController extends Controller
         $ledger->save();
 
         Cache::forget('user:' . Auth::id() . ':total_liquid_assets');
+
+        if ($request->wantsJson()) {
+            return response()->json(['success' => true]);
+        }
 
         return back()->with('success', 'Record confirmed successfully.');
     }
