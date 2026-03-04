@@ -16,74 +16,128 @@ class LedgerController extends Controller
      */
     public function index(Request $request)
     {
-        // pagination choice (default 10)
-        $perPage = intval($request->input('perPage', 10));
-        if (!in_array($perPage, [10, 30, 50])) {
-            $perPage = 10;
-        }
-
         $accountFilter = $request->input('account');
-
-        // year/month filters for navigation (default to current values)
+        $itemFilter = $request->input('item');  // New filter
         $year  = $request->input('year',  Carbon::now()->year);
         $month = $request->input('month', Carbon::now()->month);
 
-        // latest confirmed transaction date: treat date <= today as "confirmed"
-        $today = Carbon::today()->toDateString();
-        $latestConfirmed = Ledger::where('user_id', Auth::id())
-            ->when($accountFilter, function ($q) use ($accountFilter) {
-                $q->where('account_id', $accountFilter);
-            })
-            ->where('date', '<=', $today)
-            ->max('date');
+        // Get all accounts for the user
+        $allAccounts = Auth::user()->accounts()->get();
 
-        if (!$latestConfirmed) {
-            // fallback to latest ledger date for the user/account or today
-            $latestConfirmed = Ledger::where('user_id', Auth::id())
-                ->when($accountFilter, function ($q) use ($accountFilter) {
-                    $q->where('account_id', $accountFilter);
-                })
-                ->max('date') ?: $today;
-        }
+        // Get all unique items for filtering
+        $allItems = Ledger::where('user_id', Auth::id())
+            ->where('item', '<>', 'Horizon placeholder')
+            ->distinct()
+            ->pluck('item')
+            ->sort()
+            ->values();
 
-        // optimize: select only necessary columns and eager load relations
-        $query = Ledger::with('account')
-            ->select(['id','user_id','account_id','date','item','amount','balance','transaction_id','version','effective_time'])
+        // ===== Get confirmed ledgers (most recent 5) =====
+        $confirmedQuery = Ledger::with('account')
             ->where('user_id', Auth::id())
+            ->where('status', 'confirmed')
             ->when($accountFilter, function ($q) use ($accountFilter) {
                 $q->where('account_id', $accountFilter);
             })
-            ->where('date', '<=', $latestConfirmed)
+            ->when($itemFilter, function ($q) use ($itemFilter) {
+                $q->where('item', $itemFilter);
+            })
             ->where('item', '<>', 'Horizon placeholder')
             ->orderBy('date', 'desc')
             ->orderBy('effective_time', 'desc')
             ->orderBy('id', 'desc');
 
-        // use simplePaginate to avoid expensive total counts on large datasets
-        $ledgers = $query->simplePaginate($perPage)->appends(['perPage' => $perPage, 'account' => $accountFilter]);
+        $confirmed = $confirmedQuery->limit(5)->get();
 
-        $allAccounts = Auth::user()->accounts()->get();
+        // ===== Get pending ledgers (10 records) =====
+        $pendingQuery = Ledger::with('account')
+            ->where('user_id', Auth::id())
+            ->where('status', 'pending')
+            ->when($accountFilter, function ($q) use ($accountFilter) {
+                $q->where('account_id', $accountFilter);
+            })
+            ->when($itemFilter, function ($q) use ($itemFilter) {
+                $q->where('item', $itemFilter);
+            })
+            ->where('item', '<>', 'Horizon placeholder')
+            ->orderBy('date', 'asc')
+            ->orderBy('effective_time', 'asc')
+            ->orderBy('id', 'asc');
 
-        $userId = Auth::id();
-        $totalLiquidAssets = Cache::remember("user:{$userId}:total_liquid_assets", 300, function() use ($userId) {
-            $rows = Ledger::where('user_id', $userId)
-                ->where('item', '<>', 'Horizon placeholder')
-                ->whereNotNull('account_id')
+        $pending = $pendingQuery->limit(10)->get();
+
+        // Merge confirmed (reversed) + pending
+        $ledgers = collect($confirmed)->reverse()->concat($pending);
+
+        // ===== Get balance by account (use latest confirmed records) =====
+        $balanceByAccount = $allAccounts->map(function ($account) use ($accountFilter) {
+            if ($accountFilter && $accountFilter != $account->id) {
+                return null;
+            }
+            $latest = Ledger::where('user_id', Auth::id())
+                ->where('account_id', $account->id)
+                ->where('status', 'confirmed')
                 ->orderBy('date', 'desc')
                 ->orderBy('effective_time', 'desc')
-                ->get()
-                ->unique('account_id');
-            return $rows->sum('balance');
-        });
+                ->orderBy('id', 'desc')
+                ->first();
+
+            return [
+                'account' => $account,
+                'balance' => $latest ? $latest->balance : 0,
+            ];
+        })->filter();
+
+        // Total liquid assets
+        $totalLiquidAssets = $balanceByAccount->sum('balance');
+
+        $latestConfirmed = Ledger::where('user_id', Auth::id())
+            ->where('status', 'confirmed')
+            ->max('date') ?? Carbon::today()->toDateString();
+
+        // Date navigation for year/month buttons
+        $currentDate = Carbon::createFromDate($year, $month, 1);
+        $prevDate = $currentDate->copy()->subMonth();
+        $nextDate = $currentDate->copy()->addMonth();
+
+        // Date dropdowns for form (year, month, day with today as default)
+        $today = Carbon::today();
+        $defaultYear = $today->year;
+        $defaultMonth = $today->month;
+        $defaultDay = $today->day;
+
+        // Generate year options (±10 years)
+        $yearOptions = range($today->year - 10, $today->year + 10);
+        
+        // Month options are fixed
+        $monthOptions = range(1, 12);
+        
+        // Day options vary by month/year
+        $daysInMonth = Carbon::createFromDate($defaultYear, $defaultMonth, 1)->daysInMonth;
+        $dayOptions = range(1, $daysInMonth);
 
         return view('ledgers.index', compact(
             'ledgers',
-            'perPage',
+            'confirmed',
+            'pending',
             'allAccounts',
+            'allItems',
+            'balanceByAccount',
             'latestConfirmed',
             'totalLiquidAssets',
             'year',
-            'month'
+            'month',
+            'accountFilter',
+            'itemFilter',
+            'currentDate',
+            'prevDate',
+            'nextDate',
+            'defaultYear',
+            'defaultMonth',
+            'defaultDay',
+            'yearOptions',
+            'monthOptions',
+            'dayOptions'
         ));
     }
 
@@ -319,6 +373,60 @@ class LedgerController extends Controller
         return redirect()->route('ledgers.index')->with('success', 'Record updated successfully.');
     }
 
+    /**
+     * Update amount inline (for table editing)
+     */
+    public function updateInline(Request $request, Ledger $ledger)
+    {
+        // Verify ownership
+        if ($ledger->user_id !== Auth::id()) {
+            abort(403);
+        }
+
+        // Validate
+        $request->validate([
+            'amount' => 'required|numeric',
+        ]);
+
+        $oldAmount = $ledger->amount;
+        $newAmount = (int) $request->input('amount');
+        $difference = $newAmount - $oldAmount;
+
+        $ledger->amount = $newAmount;
+        $ledger->save();
+
+        // Update balances for subsequent ledgers in the same account
+        $accountId = $ledger->account_id;
+        $userId = Auth::id();
+
+        $subsequentLedgers = Ledger::where('user_id', $userId)
+            ->where('account_id', $accountId)
+            ->where('date', '>', $ledger->date)
+            ->orWhere(function ($q) use ($ledger, $userId, $accountId) {
+                $q->where('user_id', $userId)
+                  ->where('account_id', $accountId)
+                  ->where('date', '=', $ledger->date)
+                  ->where('id', '>', $ledger->id);
+            })
+            ->orderBy('date', 'asc')
+            ->orderBy('effective_time', 'asc')
+            ->orderBy('id', 'asc')
+            ->get();
+
+        foreach ($subsequentLedgers as $sub) {
+            $sub->balance += $difference;
+            $sub->save();
+        }
+
+        Cache::forget('user:' . Auth::id() . ':total_liquid_assets');
+
+        return response()->json([
+            'success' => true,
+            'new_balance' => $ledger->balance,
+            'message' => 'Updated successfully'
+        ]);
+    }
+
     // make sure there is at least one transaction five years beyond the last date for account
     private function ensureFiveYearHorizon($accountId)
     {
@@ -379,6 +487,31 @@ class LedgerController extends Controller
         Cache::forget('user:' . Auth::id() . ':total_liquid_assets');
 
         return redirect()->route('ledgers.index')->with('success', 'Record deleted successfully.');
+    }
+
+    /**
+     * Confirm a pending ledger record (mark as confirmed)
+     */
+    public function confirm($id)
+    {
+        $ledger = Ledger::findOrFail($id);
+
+        // Verify ownership
+        if ($ledger->user_id !== Auth::id()) {
+            abort(403);
+        }
+
+        // Only pending records can be confirmed
+        if ($ledger->status !== 'pending') {
+            return back()->with('error', 'Only pending records can be confirmed.');
+        }
+
+        $ledger->status = 'confirmed';
+        $ledger->save();
+
+        Cache::forget('user:' . Auth::id() . ':total_liquid_assets');
+
+        return back()->with('success', 'Record confirmed successfully.');
     }
 
     /**

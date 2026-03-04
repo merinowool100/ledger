@@ -17,6 +17,8 @@ Route::middleware('auth')->group(function () {
     Route::patch('/profile', [ProfileController::class, 'update'])->name('profile.update');
     Route::delete('/profile', [ProfileController::class, 'destroy'])->name('profile.destroy');
     Route::resource('ledgers', LedgerController::class);
+    Route::post('/ledgers/{ledger}/confirm', [LedgerController::class, 'confirm'])->name('ledgers.confirm');
+    Route::patch('/ledgers/{ledger}/update-inline', [LedgerController::class, 'updateInline'])->name('ledgers.updateInline');
     Route::get('/ledgers/export', [LedgerController::class, 'export'])->name('ledgers.export');
 
     // offline sync endpoints

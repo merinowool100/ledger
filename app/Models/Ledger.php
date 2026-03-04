@@ -16,6 +16,7 @@ class Ledger extends Model
         'item',
         'amount',
         'balance',
+        'status', // 'pending' or 'confirmed'
         'group_id',
         'account_id',
         'transaction_id',
