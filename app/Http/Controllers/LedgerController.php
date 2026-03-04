@@ -39,27 +39,10 @@ class LedgerController extends Controller
             ->sort()
             ->values();
 
-        // ===== Get confirmed ledgers =====
-        $confirmedQuery = Ledger::with('account')
+        // ===== Get all ledgers (treat confirmed and pending equally) =====
+        // Fetch a single combined list ordered by date (oldest → newest) so transactions appear in chronological order
+        $allQuery = Ledger::with('account')
             ->where('user_id', Auth::id())
-            ->where('status', 'confirmed')
-            ->when($accountFilter, function ($q) use ($accountFilter) {
-                $q->where('account_id', $accountFilter);
-            })
-            ->when($itemFilter, function ($q) use ($itemFilter) {
-                $q->where('item', $itemFilter);
-            })
-            ->where('item', '<>', 'Horizon placeholder')
-            ->orderBy('date', 'desc')
-            ->orderBy('effective_time', 'desc')
-            ->orderBy('id', 'desc');
-
-        $confirmedAll = $confirmedQuery->get();
-
-        // ===== Get pending ledgers =====
-        $pendingQuery = Ledger::with('account')
-            ->where('user_id', Auth::id())
-            ->where('status', 'pending')
             ->when($accountFilter, function ($q) use ($accountFilter) {
                 $q->where('account_id', $accountFilter);
             })
@@ -71,10 +54,7 @@ class LedgerController extends Controller
             ->orderBy('effective_time', 'asc')
             ->orderBy('id', 'asc');
 
-        $pendingAll = $pendingQuery->get();
-
-        // Combine for pagination (use a distinct variable so we don't overwrite $allItems list)
-        $allLedgers = $confirmedAll->concat($pendingAll);
+        $allLedgers = $allQuery->get();
         $totalCount = $allLedgers->count();
         $slice = $allLedgers->forPage($page, $perPage);
         $ledgers = new \Illuminate\Pagination\LengthAwarePaginator(
