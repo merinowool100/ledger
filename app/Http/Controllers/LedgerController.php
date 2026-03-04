@@ -180,6 +180,7 @@ class LedgerController extends Controller
 
         return view('ledgers.index', compact(
             'ledgers',
+            'perPage',
             'allAccounts',
             'allItems',
             'balanceByAccount',
