@@ -21,6 +21,13 @@ class LedgerController extends Controller
         $year  = $request->input('year',  Carbon::now()->year);
         $month = $request->input('month', Carbon::now()->month);
 
+        // pagination choice (default 15)
+        $perPage = intval($request->input('perPage', 15));
+        if (!in_array($perPage, [15, 30, 50, 100])) {
+            $perPage = 15;
+        }
+        $page = intval($request->input('page', 1));
+
         // Get all accounts for the user
         $allAccounts = Auth::user()->accounts()->get();
 
@@ -32,7 +39,7 @@ class LedgerController extends Controller
             ->sort()
             ->values();
 
-        // ===== Get confirmed ledgers (most recent 5) =====
+        // ===== Get confirmed ledgers =====
         $confirmedQuery = Ledger::with('account')
             ->where('user_id', Auth::id())
             ->where('status', 'confirmed')
@@ -47,9 +54,9 @@ class LedgerController extends Controller
             ->orderBy('effective_time', 'desc')
             ->orderBy('id', 'desc');
 
-        $confirmed = $confirmedQuery->limit(5)->get();
+        $confirmedAll = $confirmedQuery->get();
 
-        // ===== Get pending ledgers (10 records) =====
+        // ===== Get pending ledgers =====
         $pendingQuery = Ledger::with('account')
             ->where('user_id', Auth::id())
             ->where('status', 'pending')
@@ -64,10 +71,66 @@ class LedgerController extends Controller
             ->orderBy('effective_time', 'asc')
             ->orderBy('id', 'asc');
 
-        $pending = $pendingQuery->limit(10)->get();
+        $pendingAll = $pendingQuery->get();
 
-        // Merge confirmed (reversed) + pending
-        $ledgers = collect($confirmed)->reverse()->concat($pending);
+        // Combine for pagination
+        $allItems = $confirmedAll->concat($pendingAll);
+        $totalCount = $allItems->count();
+        $slice = $allItems->forPage($page, $perPage);
+        $ledgers = new \Illuminate\Pagination\LengthAwarePaginator(
+            $slice,
+            $totalCount,
+            $perPage,
+            $page,
+            ['path' => \Illuminate\Pagination\Paginator::resolveCurrentPath(), 'query' => $request->query()]
+        );
+
+        // former merge logic still needed for balances etc.
+*** End Patch
+        // Build per-row per-account balance snapshots across the entire result set (allItems)
+        $accountIds = $allAccounts->pluck('id')->values();
+
+        // determine starting balances as of day before the first ledger in our series
+        $rowBalances = [];
+        if ($allItems->isEmpty()) {
+            $initialBalances = $accountIds->mapWithKeys(function($id) { return [$id => 0]; })->toArray();
+        } else {
+            $firstDate = $allItems->first()->date->toDateString();
+            $initialBalances = [];
+            foreach ($accountIds as $aid) {
+                $latestBefore = Ledger::where('user_id', Auth::id())
+                    ->where('account_id', $aid)
+                    ->where('status', 'confirmed')
+                    ->where('date', '<', $firstDate)
+                    ->orderBy('date', 'desc')
+                    ->orderBy('effective_time', 'desc')
+                    ->orderBy('id', 'desc')
+                    ->first();
+                $initialBalances[$aid] = $latestBefore ? $latestBefore->balance : 0;
+            }
+        }
+
+        // current balances mutable copy
+        $currentBalances = $initialBalances;
+        foreach ($allItems as $lg) {
+            $acctId = $lg->account_id;
+            if (!array_key_exists($acctId, $currentBalances)) {
+                $currentBalances[$acctId] = 0;
+            }
+            $currentBalances[$acctId] += $lg->amount;
+            $rowBalances[$lg->id] = $currentBalances;
+        }
+
+        // now $rowBalances has entries for all items; pagination will slice $ledgers earlier
+
+        // prepare data for chart (sorted by date)
+        $chartData = $allItems->sortBy('date')->values()->map(function($l){
+            return [
+                'date' => (string)$l->date,
+                'amount' => (float)$l->amount,
+                'status' => $l->status,
+            ];
+        });
 
         // ===== Get balance by account (use latest confirmed records) =====
         $balanceByAccount = $allAccounts->map(function ($account) use ($accountFilter) {
@@ -137,7 +200,9 @@ class LedgerController extends Controller
             'defaultDay',
             'yearOptions',
             'monthOptions',
-            'dayOptions'
+            'dayOptions',
+            'rowBalances',
+            'chartData'
         ));
     }
 
@@ -551,12 +616,13 @@ class LedgerController extends Controller
             ->orderBy('effective_time', 'desc')
             ->get();
 
-        // Build CSV
-        $csv = "Date,Account,Item,Amount,Balance\n";
+        // Build CSV (add UTF-8 BOM for Excel compatibility)
+        $csvHeader = "Date,Account,Item,Amount,Balance\n";
+        $rows = "";
         foreach ($ledgers as $ledger) {
-            $csv .= sprintf(
+            $rows .= sprintf(
                 "%s,%s,%s,%d,%d\n",
-                $ledger->date,
+                $ledger->date->format('Y-m-d'),
                 optional($ledger->account)->name ?? '',
                 '"' . str_replace('"', '""', $ledger->item) . '"',
                 $ledger->amount,
@@ -564,9 +630,15 @@ class LedgerController extends Controller
             );
         }
 
-        return response($csv)
-            ->header('Content-Type', 'text/csv')
-            ->header('Content-Disposition', 'attachment; filename="ledger_' . now()->format('Ymd_His') . '.csv"');
+        $filename = 'ledger_' . now()->format('Ymd_His') . '.csv';
+        $bom = "\xEF\xBB\xBF"; // UTF-8 BOM
+
+        return response()->streamDownload(function() use ($bom, $csvHeader, $rows) {
+            echo $bom . $csvHeader . $rows;
+        }, $filename, [
+            'Content-Type' => 'text/csv; charset=UTF-8',
+            'Content-Disposition' => 'attachment; filename="' . $filename . '"',
+        ]);
     }
 
 }

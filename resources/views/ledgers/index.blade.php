@@ -161,20 +161,6 @@
 
 
                 <div class="pt-4 pb-12" style="">
-                <!-- Date Navigation -->
-                <div class="mb-4 flex items-center justify-between">
-                    <a href="{{ route('ledgers.index', ['year' => $prevDate->year, 'month' => $prevDate->month, 'account' => $accountFilter]) }}" 
-                        class="inline-flex items-center px-4 py-2 bg-blue-600 text-white font-semibold text-sm rounded-md hover:bg-blue-700">
-                        ← {{ $prevDate->format('M Y') }}
-                    </a>
-                    <div class="text-lg font-bold text-gray-900 dark:text-gray-100">
-                        {{ $currentDate->format('F Y') }}
-                    </div>
-                    <a href="{{ route('ledgers.index', ['year' => $nextDate->year, 'month' => $nextDate->month, 'account' => $accountFilter]) }}" 
-                        class="inline-flex items-center px-4 py-2 bg-blue-600 text-white font-semibold text-sm rounded-md hover:bg-blue-700">
-                        {{ $nextDate->format('M Y') }} →
-                    </a>
-                </div>
                 <!-- filters and pagination controls -->
                 <div class="mb-3 flex items-center space-x-2">
                     <form method="GET" class="flex items-center space-x-2">
@@ -193,6 +179,13 @@
                             @foreach($allItems as $itemName)
                                 <option value="{{ $itemName }}" {{ request('item')==$itemName ? 'selected' : '' }}>{{ $itemName }}</option>
                             @endforeach
+                        </select>
+                        <!-- Per-page selector -->
+                        <select name="perPage" id="perPage" onchange="this.form.submit()" class="border border-gray-400 rounded px-2 py-1 text-xs">
+                            <option value="15" {{ $perPage==15?'selected':'' }}>15</option>
+                            <option value="30" {{ $perPage==30?'selected':'' }}>30</option>
+                            <option value="50" {{ $perPage==50?'selected':'' }}>50</option>
+                            <option value="100" {{ $perPage==100?'selected':'' }}>100</option>
                         </select>
                     </form>
                 </div>
@@ -238,7 +231,11 @@
                                             <th class="border border-gray-400 dark:border-gray-600 px-2 py-1 text-left font-semibold text-gray-700 dark:text-gray-300" style="width:90px;">Account</th>
                                             <th class="border border-gray-400 dark:border-gray-600 px-2 py-1 text-left font-semibold text-gray-700 dark:text-gray-300" style="width:150px;">Item</th>
                                             <th class="border border-gray-400 dark:border-gray-600 px-2 py-1 text-right font-semibold text-gray-700 dark:text-gray-300" style="width:90px;">Amount</th>
-                                            <th class="border border-gray-400 dark:border-gray-600 px-2 py-1 text-right font-semibold text-gray-700 dark:text-gray-300" style="width:100px;">Balance</th>
+                                            <!-- Per-account balance columns -->
+                                            @foreach($allAccounts as $acct)
+                                                <th class="border border-gray-400 dark:border-gray-600 px-2 py-1 text-right font-semibold text-gray-700 dark:text-gray-300">{{ $acct->name }}</th>
+                                            @endforeach
+                                            <th class="border border-gray-400 dark:border-gray-600 px-2 py-1 text-right font-semibold text-gray-700 dark:text-gray-300" style="width:120px;">Total Assets</th>
                                             <th class="border border-gray-400 dark:border-gray-600 px-2 py-1 text-center font-semibold text-gray-700 dark:text-gray-300" style="width:70px;">Status</th>
                                             <th class="border border-gray-400 dark:border-gray-600 px-2 py-1 text-center font-semibold text-gray-700 dark:text-gray-300" style="width:70px;">Actions</th>
                                         </tr>
@@ -262,9 +259,22 @@
                                                     data-ledger-id="{{ $ledger->id }}"
                                                     @if($ledger->status === 'confirmed') disabled @endif>
                                             </td>
-                                            <td class="border border-gray-300 dark:border-gray-700 px-2 py-1 text-right text-gray-900 dark:text-gray-100 font-mono font-semibold bg-gray-200 dark:bg-gray-700
-                @if($ledger->balance < 0) text-red-600 dark:text-red-400 @endif">
-                                                {{ number_format($ledger->balance) }}
+                                            <!-- Per-account balances for this row -->
+                                            @php $rowBal = $rowBalances[$ledger->id] ?? []; @endphp
+                                            @foreach($allAccounts as $acct)
+                                                @php $val = $rowBal[$acct->id] ?? null; @endphp
+                                                <td class="border border-gray-300 dark:border-gray-700 px-2 py-1 text-right text-gray-900 dark:text-gray-100 font-mono bg-gray-50 dark:bg-gray-800
+                @if($val !== null && $val < 0) text-red-600 dark:text-red-400 @endif">
+                                                    @if($val !== null)
+                                                        {{ number_format($val) }}
+                                                    @else
+                                                        -
+                                                    @endif
+                                                </td>
+                                            @endforeach
+                                            <!-- total assets at this row -->
+                                            <td class="border border-gray-300 dark:border-gray-700 px-2 py-1 text-right text-gray-900 dark:text-gray-100 font-mono font-semibold bg-gray-200 dark:bg-gray-700">
+                                                {{ number_format(collect($rowBal ?: [])->sum()) }}
                                             </td>
                                             <td class="border border-gray-300 dark:border-gray-700 px-2 py-1 text-center">
                                                 <span class="px-1.5 py-0.5 rounded text-xs font-semibold
@@ -317,39 +327,74 @@
 
         <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
         <script>
-        // forecast chart data — build sorted dataset client-side for correct cumulative series
+        // forecast chart data — build sorted dataset client-side for correct cumulative series with actual vs planned and year-based coloring
         (function() {
             const ctx = document.getElementById('forecastChart');
             if (!ctx) return;
 
-            // prepare ledger rows as [{date, amount}]
-            <?php $rows = $ledgers->map(function($l){ return ['date' => (string)$l->date, 'amount' => (float)$l->amount]; }); ?>
+            // prepare ledger rows including status
+            <?php $rows = $chartData; ?>
             const ledgerRows = {!! json_encode($rows) !!};
 
-            // sort ascending by date then build cumulative
+            // sort ascending by date then build cumulative for two series
             ledgerRows.sort((a,b)=> new Date(a.date) - new Date(b.date));
             const labels = ledgerRows.map(r=>r.date);
-            const data = [];
-            let cumulative = 0;
-            ledgerRows.forEach(r=>{ cumulative += Number(r.amount||0); data.push(cumulative); });
+
+            const allData = [];
+            const confirmedData = [];
+            let cumAll = 0;
+            let cumConfirmed = 0;
+            ledgerRows.forEach(r=>{
+                cumAll += Number(r.amount||0);
+                allData.push(cumAll);
+                if (r.status === 'confirmed') {
+                    cumConfirmed += Number(r.amount||0);
+                }
+                confirmedData.push(cumConfirmed);
+            });
+
+            // helper to color segments by how many years ago
+            const segmentColor = ctx => {
+                const idx = ctx.p0DataIndex;
+                const date = new Date(labels[idx]);
+                const now = new Date();
+                const years = (now - date) / (1000*60*60*24*365);
+                if (years <= 1) return 'rgba(75,192,192,1)';
+                if (years <= 2) return 'rgba(54,162,235,1)';
+                if (years <= 3) return 'rgba(255,205,86,1)';
+                if (years <= 4) return 'rgba(153,102,255,1)';
+                return 'rgba(201,203,207,1)';
+            };
 
             new Chart(ctx, {
                 type: 'line',
                 data: {
                     labels: labels,
-                    datasets: [{
-                        label: 'Cumulative',
-                        data: data,
-                        borderColor: 'rgba(75, 192, 192, 1)',
-                        backgroundColor: 'rgba(75, 192, 192, 0.08)',
-                        tension: 0.15,
-                        fill: true,
-                    }]
+                    datasets: [
+                        {
+                            label: 'All (planned)',
+                            data: allData,
+                            borderColor: 'rgba(75, 192, 192, 1)',
+                            backgroundColor: 'rgba(75, 192, 192, 0.08)',
+                            tension: 0.15,
+                            fill: false,
+                            segment: { borderColor: segmentColor }
+                        },
+                        {
+                            label: 'Confirmed',
+                            data: confirmedData,
+                            borderColor: 'rgba(54, 162, 235, 1)',
+                            backgroundColor: 'rgba(54, 162, 235, 0.08)',
+                            tension: 0.15,
+                            fill: false,
+                            segment: { borderColor: segmentColor }
+                        }
+                    ]
                 },
                 options: {
                     responsive: true,
                     interaction: { mode: 'index', intersect: false },
-                    plugins: { legend: { display: false } },
+                    plugins: { legend: { display: true } },
                     scales: { y: { beginAtZero: true, ticks: { callback: v => Number(v).toLocaleString() } } }
                 }
             });
