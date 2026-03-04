@@ -322,6 +322,7 @@
             const ledgerRows = {!! json_encode($rows) !!};
 
             // show placeholder when no rows
+            console.log('ledgerRows length', ledgerRows.length, ledgerRows);
             if (ledgerRows.length === 0) {
                 document.getElementById('chartPlaceholder').style.display = 'block';
                 document.getElementById('forecastChart').style.display = 'none';
@@ -334,6 +335,8 @@
 
             const allData = [];
             const confirmedData = [];
+
+            console.log('building cumulative data');
             let cumAll = 0;
             let cumConfirmed = 0;
             ledgerRows.forEach(r=>{
@@ -359,6 +362,9 @@
             };
 
             try {
+                console.log('creating chart with labels', labels);
+                console.log('allData', allData);
+                console.log('confirmedData', confirmedData);
                 new Chart(ctx, {
                     type: 'line',
                     data: {
