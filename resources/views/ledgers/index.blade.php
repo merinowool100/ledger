@@ -202,7 +202,7 @@
                         <button id="viewChartBtn" onclick="switchToChart()" class="inline-flex items-center px-4 py-2 bg-gray-600 text-white font-semibold text-sm rounded-md hover:bg-gray-700">
                             📈 Chart View
                         </button>
-                        <a href="{{ route('ledgers.export') }}?account={{ request('account') }}" class="inline-flex items-center px-4 py-2 bg-green-600 text-white font-semibold text-sm rounded-md hover:bg-green-700">
+                        <a href="{{ route('ledgers.export') }}?account={{ request('account') }}&perPage={{ $perPage }}" class="inline-flex items-center px-4 py-2 bg-green-600 text-white font-semibold text-sm rounded-md hover:bg-green-700">
                             📥 CSV Export
                         </a>
                     </div>
@@ -229,7 +229,17 @@
                                     </thead>
                                     <tbody>
                                         @foreach ($ledgers as $index => $ledger)
-                                        <tr class="border-b border-gray-300 dark:border-gray-700 hover:bg-blue-50 dark:hover:bg-gray-800 @if($index % 2 == 0) bg-gray-50 dark:bg-gray-900 @else bg-white dark:bg-gray-800 @endif">
+                                        @php
+                                            $rowClass = 'border-b border-gray-300 dark:border-gray-700 hover:bg-blue-50 dark:hover:bg-gray-800 ';
+                                            if($ledger->status === 'confirmed') {
+                                                $rowClass .= 'bg-gray-100 dark:bg-gray-800 ';
+                                            } else {
+                                                $rowClass .= ($index % 2 == 0)
+                                                    ? 'bg-gray-50 dark:bg-gray-900 '
+                                                    : 'bg-white dark:bg-gray-800 ';
+                                            }
+                                        @endphp
+                                        <tr class="{{ $rowClass }}">
                                             <td class="border border-gray-300 dark:border-gray-700 px-2 py-1 text-gray-900 dark:text-gray-100 whitespace-nowrap">
                                                 {{ $ledger->date->format('Y-m-d') }}
                                             </td>
@@ -264,15 +274,8 @@
                                                 {{ number_format(collect($rowBal ?: [])->sum()) }}
                                             </td>
                                             <td class="border border-gray-300 dark:border-gray-700 px-2 py-1 text-center">
-                                                <span class="px-1.5 py-0.5 rounded text-xs font-semibold
-                                                    @if($ledger->status === 'confirmed')
-                                                        bg-green-200 text-green-800 dark:bg-green-900 dark:text-green-200
-                                                    @else
-                                                        bg-yellow-200 text-yellow-800 dark:bg-yellow-900 dark:text-yellow-200
-                                                    @endif
-                                                ">
-                                                    {{ ucfirst($ledger->status) }}
-                                                </span>
+                                                <input type="checkbox" class="status-checkbox" data-id="{{ $ledger->id }}"
+                                                    {{ $ledger->status === 'confirmed' ? 'checked disabled' : '' }} />
                                             </td>
                                             <td class="border border-gray-300 dark:border-gray-700 px-2 py-1 text-center text-xs">
                                                 <div class="flex gap-1 justify-center">
@@ -281,14 +284,6 @@
                                                     @else
                                                         <a href="{{ route('ledgers.edit', $ledger) }}" class="text-blue-600 hover:text-blue-900 dark:text-blue-400 dark:hover:text-blue-300 font-semibold text-xs">Edit</a>
                                                     @endif
-                                                    
-                                                    @if($ledger->status === 'pending')
-                                                        <form method="POST" action="{{ route('ledgers.confirm', $ledger) }}" class="inline" onsubmit="return confirm('Confirm?');">
-                                                            @csrf
-                                                            <button type="submit" class="text-green-600 hover:text-green-900 dark:text-green-400 dark:hover:text-green-300 font-semibold text-xs">✓</button>
-                                                        </form>
-                                                    @endif
-                                                    
                                                     <form method="POST" action="{{ route('ledgers.destroy', $ledger) }}" class="inline" onsubmit="return confirm('Delete?');">
                                                         @csrf
                                                         @method('DELETE')
@@ -408,6 +403,33 @@
                 newInput.style.display = 'none';
                 toggleText.textContent = '+ New Transaction';
             }
+        });
+
+        // status checkbox handler
+        document.querySelectorAll('.status-checkbox').forEach(cb => {
+            cb.addEventListener('change', async function() {
+                if (!this.checked) return; // only handle check-to-confirm
+                const id = this.dataset.id;
+                const token = '{{ csrf_token() }}';
+                try {
+                    const res = await fetch(`/ledgers/${id}/confirm`, {
+                        method: 'POST',
+                        headers: {
+                            'X-CSRF-TOKEN': token,
+                            'Accept': 'application/json'
+                        }
+                    });
+                    if (res.ok) {
+                        location.reload();
+                    } else {
+                        alert('Failed to confirm');
+                        location.reload();
+                    }
+                } catch(e) {
+                    alert('Error: ' + e);
+                    location.reload();
+                }
+            });
         });
 
         // Show/hide "Until" field when repeat checkboxes are toggled

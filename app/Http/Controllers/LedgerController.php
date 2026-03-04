@@ -73,10 +73,10 @@ class LedgerController extends Controller
 
         $pendingAll = $pendingQuery->get();
 
-        // Combine for pagination
-        $allItems = $confirmedAll->concat($pendingAll);
-        $totalCount = $allItems->count();
-        $slice = $allItems->forPage($page, $perPage);
+        // Combine for pagination (use a distinct variable so we don't overwrite $allItems list)
+        $allLedgers = $confirmedAll->concat($pendingAll);
+        $totalCount = $allLedgers->count();
+        $slice = $allLedgers->forPage($page, $perPage);
         $ledgers = new \Illuminate\Pagination\LengthAwarePaginator(
             $slice,
             $totalCount,
@@ -86,15 +86,15 @@ class LedgerController extends Controller
         );
 
         // former merge logic still needed for balances etc.
-        // Build per-row per-account balance snapshots across the entire result set (allItems)
+        // Build per-row per-account balance snapshots across the entire result set (allLedgers)
         $accountIds = $allAccounts->pluck('id')->values();
 
         // determine starting balances as of day before the first ledger in our series
         $rowBalances = [];
-        if ($allItems->isEmpty()) {
+        if ($allLedgers->isEmpty()) {
             $initialBalances = $accountIds->mapWithKeys(function($id) { return [$id => 0]; })->toArray();
         } else {
-            $firstDate = $allItems->first()->date->toDateString();
+            $firstDate = $allLedgers->first()->date->toDateString();
             $initialBalances = [];
             foreach ($accountIds as $aid) {
                 $latestBefore = Ledger::where('user_id', Auth::id())
@@ -102,7 +102,7 @@ class LedgerController extends Controller
                     ->where('status', 'confirmed')
                     ->where('date', '<', $firstDate)
                     ->orderBy('date', 'desc')
-                    ->orderBy('effective_time', 'desc')
+                    ->orderBy('effective_time', 'asc')
                     ->orderBy('id', 'desc')
                     ->first();
                 $initialBalances[$aid] = $latestBefore ? $latestBefore->balance : 0;
@@ -111,7 +111,7 @@ class LedgerController extends Controller
 
         // current balances mutable copy
         $currentBalances = $initialBalances;
-        foreach ($allItems as $lg) {
+        foreach ($allLedgers as $lg) {
             $acctId = $lg->account_id;
             if (!array_key_exists($acctId, $currentBalances)) {
                 $currentBalances[$acctId] = 0;
@@ -123,7 +123,7 @@ class LedgerController extends Controller
         // now $rowBalances has entries for all items; pagination will slice $ledgers earlier
 
         // prepare data for chart (sorted by date)
-        $chartData = $allItems->sortBy('date')->values()->map(function($l){
+        $chartData = $allLedgers->sortBy('date')->values()->map(function($l){
             return [
                 'date' => (string)$l->date,
                 'amount' => (float)$l->amount,
