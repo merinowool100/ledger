@@ -360,24 +360,19 @@
 
             try {
                 new Chart(ctx, {
-            } catch(e) {
-                console.error('Chart initialization failed', e);
-                document.getElementById('chartPlaceholder').textContent = 'Failed to render chart: ' + e;
-                document.getElementById('chartPlaceholder').style.display = 'block';
-            }
-                type: 'line',
-                data: {
-                    labels: labels,
-                    datasets: [
-                        {
-                            label: 'All (planned)',
-                            data: allData,
-                            borderColor: 'rgba(75, 192, 192, 1)',
-                            backgroundColor: 'rgba(75, 192, 192, 0.08)',
-                            tension: 0.15,
-                            fill: false,
-                            segment: { borderColor: segmentColor }
-                        },
+                    type: 'line',
+                    data: {
+                        labels: labels,
+                        datasets: [
+                            {
+                                label: 'All (planned)',
+                                data: allData,
+                                borderColor: 'rgba(75, 192, 192, 1)',
+                                backgroundColor: 'rgba(75, 192, 192, 0.08)',
+                                tension: 0.15,
+                                fill: false,
+                                segment: { borderColor: segmentColor }
+                            },
                         {
                             label: 'Confirmed',
                             data: confirmedData,
