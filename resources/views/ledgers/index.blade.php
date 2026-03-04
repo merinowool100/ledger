@@ -391,6 +391,11 @@
                     scales: { y: { beginAtZero: true, ticks: { callback: v => Number(v).toLocaleString() } } }
                 }
             });
+            } catch(e) {
+                console.error('Chart initialization failed', e);
+                document.getElementById('chartPlaceholder').textContent = 'Failed to render chart: ' + e;
+                document.getElementById('chartPlaceholder').style.display = 'block';
+            }
         })();
 
         // Toggle new transaction form visibility
