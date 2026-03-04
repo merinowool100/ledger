@@ -16,10 +16,12 @@ Route::middleware('auth')->group(function () {
     Route::get('/profile', [ProfileController::class, 'edit'])->name('profile.edit');
     Route::patch('/profile', [ProfileController::class, 'update'])->name('profile.update');
     Route::delete('/profile', [ProfileController::class, 'destroy'])->name('profile.destroy');
-    Route::resource('ledgers', LedgerController::class);
+    // custom ledger routes before resource to avoid collision with {ledger} wildcard
+    Route::get('/ledgers/export', [LedgerController::class, 'export'])->name('ledgers.export');
     Route::post('/ledgers/{ledger}/confirm', [LedgerController::class, 'confirm'])->name('ledgers.confirm');
     Route::patch('/ledgers/{ledger}/update-inline', [LedgerController::class, 'updateInline'])->name('ledgers.updateInline');
-    Route::get('/ledgers/export', [LedgerController::class, 'export'])->name('ledgers.export');
+    // apply constraint so {ledger} only matches numeric ids
+    Route::resource('ledgers', LedgerController::class)->where(['ledger' => '[0-9]+']);
 
     // offline sync endpoints
     Route::prefix('sync')->group(function () {

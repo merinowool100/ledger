@@ -189,19 +189,6 @@
                         </select>
                     </form>
                 </div>
-                <!-- Account Balances Summary -->
-                @if($balanceByAccount->isNotEmpty())
-                <div class="mb-4 grid grid-cols-2 gap-4">
-                    @foreach($balanceByAccount as $item)
-                        <div class="p-4 bg-blue-50 dark:bg-blue-900 rounded-md">
-                            <div class="text-sm text-gray-600 dark:text-gray-300">{{ $item['account']->name }}</div>
-                            <div class="text-2xl font-bold text-gray-900 dark:text-gray-100">
-                                {{ number_format($item['balance']) }}
-                            </div>
-                        </div>
-                    @endforeach
-                </div>
-                @endif
                 <!-- total assets (from cache) -->
                 <div class="mb-4 flex justify-between items-center">
                     <div>
@@ -316,6 +303,9 @@
                                 <!-- テーブル終了 -->
                                 <!-- forecast chart -->
                                 <div class="mt-6" id="chartSection" style="display:none;">
+                                    <div id="chartPlaceholder" class="text-center text-gray-500" style="display:none;">
+                                        No data to display on chart.
+                                    </div>
                                     <canvas id="forecastChart" height="200"></canvas>
                                 </div>
                             </div>
@@ -335,6 +325,12 @@
             // prepare ledger rows including status
             <?php $rows = $chartData; ?>
             const ledgerRows = {!! json_encode($rows) !!};
+
+            // show placeholder when no rows
+            if (ledgerRows.length === 0) {
+                document.getElementById('chartPlaceholder').style.display = 'block';
+                return;
+            }
 
             // sort ascending by date then build cumulative for two series
             ledgerRows.sort((a,b)=> new Date(a.date) - new Date(b.date));
