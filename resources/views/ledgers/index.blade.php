@@ -312,8 +312,11 @@
 
         <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
         <script>
-        // forecast chart data — build sorted dataset client-side for correct cumulative series with actual vs planned and year-based coloring
-        (function() {
+        // forecast chart data — we'll draw once chart section is visible so canvas has proper size
+        let chartInitialized = false;
+        function initChart() {
+            if (chartInitialized) return;
+            chartInitialized = true;
             const ctx = document.getElementById('forecastChart');
             if (!ctx) return;
 
@@ -321,7 +324,6 @@
             <?php $rows = $chartData; ?>
             const ledgerRows = {!! json_encode($rows) !!};
 
-            // show placeholder when no rows
             console.log('ledgerRows length', ledgerRows.length, ledgerRows);
             if (ledgerRows.length === 0) {
                 document.getElementById('chartPlaceholder').style.display = 'block';
@@ -329,13 +331,11 @@
                 return;
             }
 
-            // sort ascending by date then build cumulative for two series
             ledgerRows.sort((a,b)=> new Date(a.date) - new Date(b.date));
             const labels = ledgerRows.map(r=>r.date);
 
             const allData = [];
             const confirmedData = [];
-
             console.log('building cumulative data');
             let cumAll = 0;
             let cumConfirmed = 0;
@@ -348,7 +348,6 @@
                 confirmedData.push(cumConfirmed);
             });
 
-            // helper to color segments by how many years ago
             const segmentColor = ctx => {
                 const idx = ctx.p0DataIndex;
                 const date = new Date(labels[idx]);
@@ -402,8 +401,11 @@
                 document.getElementById('chartPlaceholder').textContent = 'Failed to render chart: ' + e;
                 document.getElementById('chartPlaceholder').style.display = 'block';
             }
-        })();
+        }
 
+
+        // Provide base URL for ledger endpoints and ensure fetch sends credentials
+        const baseLedgersUrl = "{{ url('ledgers') }}";
         // Toggle new transaction form visibility
         document.getElementById('toggleButton').addEventListener('click', function() {
             const newInput = document.getElementById('newInput');
@@ -425,8 +427,9 @@
                 const id = this.dataset.id;
                 const token = '{{ csrf_token() }}';
                 try {
-                    const res = await fetch(`/ledgers/${id}/confirm`, {
+                    const res = await fetch(`${baseLedgersUrl}/${id}/confirm`, {
                         method: 'POST',
+                        credentials: 'same-origin',
                         headers: {
                             'X-CSRF-TOKEN': token,
                             'Accept': 'application/json'
@@ -615,6 +618,7 @@ function switchToTable() {
 function switchToChart() {
     document.getElementById('tableSection').style.display = 'none';
     document.getElementById('chartSection').style.display = 'block';
+    initChart();
     document.getElementById('viewChartBtn').classList.add('bg-indigo-600', 'hover:bg-indigo-700');
     document.getElementById('viewChartBtn').classList.remove('bg-gray-600', 'hover:bg-gray-700');
     document.getElementById('viewTableBtn').classList.add('bg-gray-600', 'hover:bg-gray-700');
@@ -675,17 +679,17 @@ document.querySelectorAll('.amount-input').forEach(input => {
             return;
         }
 
-        // PATCH request to update
-        fetch(`/ledgers/${ledgerId}/update-inline`, {
-            method: 'PATCH',
+        // PATCH request to update (use POST + method override to avoid servers blocking PATCH)
+        fetch(`${baseLedgersUrl}/${ledgerId}/update-inline`, {
+            method: 'POST',
+            credentials: 'same-origin',
             headers: {
                 'Content-Type': 'application/json',
                 'X-CSRF-TOKEN': document.querySelector('meta[name="csrf-token"]').getAttribute('content'),
+                'X-HTTP-Method-Override': 'PATCH',
                 'Accept': 'application/json'
             },
-            body: JSON.stringify({
-                amount: parseInt(newAmount)
-            })
+            body: JSON.stringify({ amount: parseInt(newAmount) })
         })
         .then(async response => {
             if (!response.ok) {
