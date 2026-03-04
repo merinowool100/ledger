@@ -86,7 +86,6 @@ class LedgerController extends Controller
         );
 
         // former merge logic still needed for balances etc.
-*** End Patch
         // Build per-row per-account balance snapshots across the entire result set (allItems)
         $accountIds = $allAccounts->pluck('id')->values();
 
